@@ -1,0 +1,18 @@
+[project]
+name = "medqcnn"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "dotenv>=0.9.9",
+    "nibabel>=5.3.3",
+    "numpy>=2.4.2",
+    "opencv-python-headless>=4.13.0.92",
+    "pandas>=3.0.1",
+    "pennylane>=0.44.0",
+    "pennylane-qiskit>=0.44.1",
+    "qiskit>=2.3.0",
+    "torch>=2.10.0",
+    "torchvision>=0.25.0",
+]
