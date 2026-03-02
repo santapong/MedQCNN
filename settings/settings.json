@@ -1,0 +1,38 @@
+{
+    "project": {
+        "name": "MedQCNN",
+        "version": "0.1.0",
+        "description": "Hybrid Quantum-Classical CNN for Medical Diagnostics"
+    },
+    "quantum": {
+        "num_qubits": 8,
+        "latent_dim": 256,
+        "num_ansatz_layers": 4,
+        "diff_method": "parameter-shift",
+        "device": "default.qubit"
+    },
+    "classical": {
+        "backbone": "resnet18",
+        "pretrained": true,
+        "freeze_backbone": true,
+        "image_size": 224
+    },
+    "training": {
+        "learning_rate": 0.001,
+        "batch_size": 16,
+        "epochs": 50,
+        "seed": 42,
+        "save_every": 10,
+        "dataset": "breastmnist"
+    },
+    "paths": {
+        "data_dir": "data",
+        "checkpoint_dir": "checkpoints",
+        "log_dir": "logs"
+    },
+    "hardware": {
+        "target": "edge-compute",
+        "max_ram_gb": 32,
+        "prefer_gpu": true
+    }
+}

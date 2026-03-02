@@ -1,18 +1,53 @@
 [project]
 name = "medqcnn"
 version = "0.1.0"
-description = "Add your description here"
+description = "Hybrid Quantum-Classical CNN for Medical Diagnostics — CaaS-Q Pipeline"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "dotenv>=0.9.9",
-    "nibabel>=5.3.3",
-    "numpy>=2.4.2",
+    # --- Classical Vision (Phase 1) ---
+    "torch>=2.10.0",
+    "torchvision>=0.25.0",
     "opencv-python-headless>=4.13.0.92",
-    "pandas>=3.0.1",
+    "nibabel>=5.3.3",
+    # --- Quantum ML (Phase 2) ---
     "pennylane>=0.44.0",
     "pennylane-qiskit>=0.44.1",
     "qiskit>=2.3.0",
-    "torch>=2.10.0",
-    "torchvision>=0.25.0",
+    # --- Core Scientific (All Phases) ---
+    "numpy>=2.4.2",
+    "pandas>=3.0.1",
+    "scikit-learn>=1.6.0",
+    # --- Benchmarking (Phase 3) ---
+    "medmnist>=3.0.0",
+    "matplotlib>=3.10.0",
+    # --- Utilities ---
+    "dotenv>=0.9.9",
+    "tqdm>=4.67.0",
+    "rich>=14.0.0",
+    "psutil>=7.0.0",
 ]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.11.0",
+    "mypy>=1.15.0",
+]
+
+[project.scripts]
+medqcnn = "medqcnn.__main__:main"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
