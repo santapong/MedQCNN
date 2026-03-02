@@ -1,28 +1,152 @@
-# MedQCNN: Hybrid Quantum-Classical Convolutional Neural Network for Medical Diagnostics
+# MedQCNN — Hybrid Quantum-Classical CNN for Medical Diagnostics
 
-## Overview
-
-The **MedQCNN** project seeks to solve the classical curse of dimensionality and parameter-bloat in medical image analysis. Traditional Convolutional Neural Networks (CNNs) require millions of parameters to detect morphological anomalies (e.g., gliomas, Alzheimer's atrophy) in volumetric MRI scans, inevitably leading to severe overfitting on scarce, highly-regulated clinical datasets. 
-
-By mapping classically compressed latent vectors into the exponentially large complex Hilbert space $\mathcal{H}_{2^n}$ of a quantum system, MedQCNN leverages quantum superposition and entanglement to evaluate highly non-linear decision boundaries. The objective is to achieve state-of-the-art diagnostic accuracy using an order of magnitude fewer trainable parameters, ensuring high generalization on small datasets.
+A hybrid quantum-classical neural network for medical image classification, designed for edge deployment on Raspberry Pi 5 clusters.
 
 ## Architecture
 
-MedQCNN is designed as a containerized, event-driven "Company as a Service" (CaaS) tool orchestrated for an AI Agent network, composed of three main nodes:
+```
+Medical Image → [ResNet-18 (frozen)] → FC Projector → L2 Norm
+    → [Amplitude Encoding] → [Variational Ansatz (Ry/Rz/CZ)]
+    → [Pauli-Z Measurement] → Classifier → Diagnosis
+```
 
-* **Node A (Classical Vision):** PyTorch & OpenCV for preprocessing and dimensionality reduction ($\mathbf{x} \to \mathbf{z} \in \mathbb{R}^{256}$).
-* **Node B (Quantum Inference):** PennyLane QNode executing Amplitude Embedding, a Hardware-Efficient Ansatz (HEA), and observable measurement.
-* **Node C (Agentic Orchestration):** TypeScript/Litestar & LangChain using a Kafka message broker for routing and a RAG pipeline to generate clinical diagnostic reports.
+| Component | Role | Module |
+|-----------|------|--------|
+| **Node A** — Classical | Feature extraction + compression to ℝ²⁵⁶ | `medqcnn/classical/` |
+| **Node B** — Quantum | Amplitude encoding + HEA + local Pauli-Z | `medqcnn/quantum/` |
+| **Hybrid Model** | End-to-end differentiable pipeline | `medqcnn/model/` |
+| **API Server** | REST endpoints for inference | `medqcnn/api/` |
+| **MCP Server** | AI agent tool integration | `medqcnn/mcp/` |
 
-### Hardware Constraints
-Designed to bypass memory limitations on edge devices (e.g., Raspberry Pi 5 Cluster, Kali Linux Workstation), the quantum simulator is strictly capped at **$n = 8$ qubits** (256-dimensional $L_2$-normalized vectors).
+## Quick Start
+
+```bash
+# Install dependencies
+uv sync
+
+# Verify environment
+uv run python main.py
+
+# Run end-to-end demo (4-qubit, BreastMNIST)
+uv run python scripts/demo.py
+
+# Train the model
+uv run python scripts/train.py --epochs 10 --n-qubits 4
+
+# Evaluate
+uv run python scripts/evaluate.py --n-qubits 4
+
+# Start REST API
+uv run python scripts/serve.py
+
+# Start MCP server (for AI agents)
+uv run python scripts/mcp_server.py
+```
+
+## API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/health` | Service health check |
+| `GET` | `/info` | Model architecture details |
+| `POST` | `/predict` | Inference (base64 image → diagnosis) |
+
+Example:
+```bash
+# Health check
+curl http://localhost:8000/health
+
+# Predict (base64 image)
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{"image_base64": "<base64-encoded-image>"}'
+```
+
+## MCP Tools (AI Agent Integration)
+
+| Tool | Description |
+|------|-------------|
+| `diagnose` | Run quantum inference on a medical image |
+| `model_info` | Get model architecture and parameter counts |
+| `list_datasets` | List available MedMNIST datasets |
+
+Configure in your MCP client:
+```json
+{
+  "mcpServers": {
+    "medqcnn": {
+      "command": "uv",
+      "args": ["run", "python", "scripts/mcp_server.py"],
+      "cwd": "/path/to/MedQCNN"
+    }
+  }
+}
+```
+
+## Docker Deployment
+
+```bash
+# Build and run with Kafka
+docker compose up -d
+
+# API available at http://localhost:8000
+# Kafka broker at localhost:9092
+```
+
+## Project Structure
+
+```
+MedQCNN/
+├── medqcnn/                 # Core package
+│   ├── config/              # Constants, settings
+│   ├── data/                # Data loaders, preprocessing
+│   ├── classical/           # ResNet backbone, FC projector
+│   ├── quantum/             # Encoding, ansatz, observables, QNode
+│   ├── model/               # HybridQCNN nn.Module
+│   ├── training/            # Trainer, loss, metrics, visualization
+│   ├── api/                 # Litestar REST server, Kafka handler
+│   ├── mcp/                 # MCP server for AI agents
+│   └── utils/               # Logging, device management
+├── scripts/                 # CLI scripts (demo, train, serve, mcp)
+├── tests/                   # Unit tests
+├── notebooks/               # Educational notebooks
+├── Dockerfile               # Multi-stage container
+├── docker-compose.yml       # API + Kafka orchestration
+└── GEMINI.md                # Full architecture spec
+```
+
+## Hardware Constraints
+
+- **Qubits:** 8 max (256-dim latent space)
+- **Ansatz layers:** 4 (shallow — barren plateau mitigation)
+- **Target:** CPU-only, 16–32 GB RAM, Raspberry Pi 5 cluster
+- **Simulation:** State-vector via PennyLane `default.qubit`
 
 ## Tech Stack
-- **Language:** Python >= 3.11
-- **Package Manager:** `uv`
-- **Classical Vision:** PyTorch, OpenCV, NiBabel, NumPy, Pandas
-- **Quantum Machine Learning:** PennyLane, Qiskit
 
-## Documentation
-- See [CHANGELOG.md](CHANGELOG.md) for release history and notable changes.
-- See [GEMINI.md](GEMINI.md) for detailed execution roadmap, agent guidelines, and project constraints.
+| Layer | Technology |
+|-------|------------|
+| Classical Vision | PyTorch, torchvision (ResNet-18) |
+| Quantum Circuit | PennyLane (TorchLayer, backprop) |
+| API Server | Litestar, Uvicorn |
+| Agent Protocol | MCP (Model Context Protocol) |
+| Message Broker | Apache Kafka |
+| Containerization | Docker, Docker Compose |
+| Package Manager | uv |
+
+## Testing
+
+```bash
+# Install dev deps
+uv sync --extra dev
+
+# Run tests
+uv run python -m pytest tests/ -v
+
+# Lint
+uv run ruff check .
+```
+
+## License
+
+MIT
