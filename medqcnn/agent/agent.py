@@ -138,10 +138,12 @@ def run_diagnostic_without_llm(image_path: str) -> str:
   Qubits:          {diagnosis["model"]["qubits"]}
   Ansatz Layers:   {diagnosis["model"]["ansatz_layers"]}
   Expectation Values (⟨σ_z⟩ per qubit):
-    {" | ".join(
-        f"Q{i}: {v:+.4f}"
-        for i, v in enumerate(diagnosis["quantum_expectation_values"])
-    )}
+    {
+        " | ".join(
+            f"Q{i}: {v:+.4f}"
+            for i, v in enumerate(diagnosis["quantum_expectation_values"])
+        )
+    }
 
   Note: Values near -1 indicate features correlated with
   malignancy; values near +1 indicate benign features.

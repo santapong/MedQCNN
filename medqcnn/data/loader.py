@@ -46,7 +46,7 @@ def get_medmnist_loaders(
         raise ValueError(msg)
 
     info = INFO[dataset_name]
-    DataClass = getattr(medmnist, info["python_class"])
+    data_class = getattr(medmnist, info["python_class"])
 
     # Standard transforms: convert to tensor, single-channel grayscale
     transform = transforms.Compose(
@@ -57,21 +57,21 @@ def get_medmnist_loaders(
 
     data_path = str(Path(data_dir).resolve())
 
-    train_dataset = DataClass(
+    train_dataset = data_class(
         split="train",
         transform=transform,
         download=download,
         root=data_path,
         size=image_size,
     )
-    val_dataset = DataClass(
+    val_dataset = data_class(
         split="val",
         transform=transform,
         download=download,
         root=data_path,
         size=image_size,
     )
-    test_dataset = DataClass(
+    test_dataset = data_class(
         split="test",
         transform=transform,
         download=download,
