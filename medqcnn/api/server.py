@@ -202,9 +202,9 @@ async def predict(data: PredictionRequest) -> PredictionResponse:
         init_db()
         session = get_session()
         try:
-            image_hash = hashlib.sha256(
-                data.image_base64.encode()[:1024]
-            ).hexdigest()[:16]
+            image_hash = hashlib.sha256(data.image_base64.encode()[:1024]).hexdigest()[
+                :16
+            ]
             create_prediction(
                 session,
                 prediction=result.prediction,

@@ -59,12 +59,8 @@ class TestPredictions:
     def test_list_predictions(self):
         session = get_session()
         try:
-            create_prediction(
-                session, prediction=0, label="Benign", confidence=0.9
-            )
-            create_prediction(
-                session, prediction=1, label="Malignant", confidence=0.7
-            )
+            create_prediction(session, prediction=0, label="Benign", confidence=0.9)
+            create_prediction(session, prediction=1, label="Malignant", confidence=0.7)
             rows, total = list_predictions(session)
             assert total == 2
             assert len(rows) == 2
@@ -74,12 +70,8 @@ class TestPredictions:
     def test_filter_by_label(self):
         session = get_session()
         try:
-            create_prediction(
-                session, prediction=0, label="Benign", confidence=0.9
-            )
-            create_prediction(
-                session, prediction=1, label="Malignant", confidence=0.7
-            )
+            create_prediction(session, prediction=0, label="Benign", confidence=0.9)
+            create_prediction(session, prediction=1, label="Malignant", confidence=0.7)
             rows, total = list_predictions(session, label_filter="Benign")
             assert total == 1
             assert rows[0].label == "Benign"
@@ -113,8 +105,12 @@ class TestTrainingRuns:
                 batch_size=16,
                 final_train_acc=0.85,
                 final_val_acc=0.78,
-                history={"train_loss": [0.5, 0.3], "val_loss": [0.6, 0.4],
-                         "train_acc": [0.7, 0.85], "val_acc": [0.65, 0.78]},
+                history={
+                    "train_loss": [0.5, 0.3],
+                    "val_loss": [0.6, 0.4],
+                    "train_acc": [0.7, 0.85],
+                    "val_acc": [0.65, 0.78],
+                },
             )
             assert run.id is not None
             assert run.dataset == "breastmnist"
@@ -127,8 +123,13 @@ class TestTrainingRuns:
         session = get_session()
         try:
             create_training_run(
-                session, dataset="breastmnist", n_qubits=4, n_layers=4,
-                epochs=10, learning_rate=0.001, batch_size=16,
+                session,
+                dataset="breastmnist",
+                n_qubits=4,
+                n_layers=4,
+                epochs=10,
+                learning_rate=0.001,
+                batch_size=16,
             )
             rows, total = list_training_runs(session)
             assert total == 1
@@ -141,8 +142,13 @@ class TestBenchmarks:
         session = get_session()
         try:
             run = create_training_run(
-                session, dataset="breastmnist", n_qubits=4, n_layers=4,
-                epochs=10, learning_rate=0.001, batch_size=16,
+                session,
+                dataset="breastmnist",
+                n_qubits=4,
+                n_layers=4,
+                epochs=10,
+                learning_rate=0.001,
+                batch_size=16,
             )
             bm = create_benchmark(
                 session,
@@ -159,16 +165,25 @@ class TestBenchmarks:
         session = get_session()
         try:
             run = create_training_run(
-                session, dataset="breastmnist", n_qubits=4, n_layers=4,
-                epochs=10, learning_rate=0.001, batch_size=16,
+                session,
+                dataset="breastmnist",
+                n_qubits=4,
+                n_layers=4,
+                epochs=10,
+                learning_rate=0.001,
+                batch_size=16,
             )
             create_benchmark(
-                session, training_run_id=run.id,
-                metric_name="acc", metric_value=0.8,
+                session,
+                training_run_id=run.id,
+                metric_name="acc",
+                metric_value=0.8,
             )
             create_benchmark(
-                session, training_run_id=run.id,
-                metric_name="f1", metric_value=0.75,
+                session,
+                training_run_id=run.id,
+                metric_name="f1",
+                metric_value=0.75,
             )
             rows, total = list_benchmarks(session, training_run_id=run.id)
             assert total == 2
