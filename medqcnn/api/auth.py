@@ -30,11 +30,20 @@ PUBLIC_PATHS: set[str] = {"/health", "/schema", "/auth/token"}
 
 
 def _get_jwt_secret() -> str:
-    """Read JWT secret from environment."""
+    """Read JWT secret from environment.
+
+    Raises RuntimeError in production if JWT_SECRET_KEY is not set.
+    Falls back to a dev-only secret only when auth is explicitly disabled.
+    """
     secret = os.environ.get("JWT_SECRET_KEY", "")
     if not secret:
-        logger.warning("JWT_SECRET_KEY not set — using insecure default for dev only")
-        return "medqcnn-dev-secret-change-me"
+        if os.environ.get("MEDQCNN_AUTH_DISABLED", "").lower() in ("1", "true"):
+            logger.warning("JWT_SECRET_KEY not set — using dev secret (auth disabled)")
+            return "medqcnn-dev-secret-change-me"
+        raise RuntimeError(
+            "JWT_SECRET_KEY environment variable is required. "
+            "Set it to a strong random string, or set MEDQCNN_AUTH_DISABLED=1 for development."
+        )
     return secret
 
 

@@ -117,6 +117,14 @@ def _run_inference(image_base64: str) -> PredictionResponse:
             status_code=400,
         )
 
+    # Validate decoded image size (max 50 MB)
+    max_decoded_bytes = 50 * 1024 * 1024
+    if len(image_bytes) > max_decoded_bytes:
+        raise ClientException(
+            detail=f"Decoded image too large ({len(image_bytes)} bytes). Max {max_decoded_bytes} bytes.",
+            status_code=413,
+        )
+
     try:
         image = Image.open(io.BytesIO(image_bytes))
     except Exception:
@@ -641,8 +649,16 @@ def create_app(checkpoint_path: str | None = None) -> Litestar:
     load_model(checkpoint_path=checkpoint_path)
     init_db()
 
-    # CORS: configurable via env, defaults to permissive for dev
-    allowed_origins = os.environ.get("CORS_ALLOWED_ORIGINS", "*").split(",")
+    # CORS: configurable via env, defaults to localhost for dev safety
+    cors_env = os.environ.get("CORS_ALLOWED_ORIGINS", "")
+    if cors_env:
+        allowed_origins = cors_env.split(",")
+    else:
+        logger.warning(
+            "CORS_ALLOWED_ORIGINS not set — defaulting to http://localhost:3000. "
+            "Set CORS_ALLOWED_ORIGINS env var for production."
+        )
+        allowed_origins = ["http://localhost:3000"]
 
     return Litestar(
         route_handlers=[
