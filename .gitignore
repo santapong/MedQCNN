@@ -210,6 +210,9 @@ __marimo__/
 # MedQCNN Project-Specific
 # ──────────────────────────────────────────────
 
+# SQLite database files
+*.db
+
 # Data directories (top-level only, not medqcnn/data/)
 /data/
 !/data/.gitkeep
