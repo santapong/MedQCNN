@@ -142,7 +142,7 @@ def main() -> None:
     console.print(f"\n  Evaluating on {len(test_loader.dataset)} test samples...")
     results = evaluate(model, test_loader, device)
 
-    console.print(f"\n[bold green]Results:[/bold green]")
+    console.print("\n[bold green]Results:[/bold green]")
     console.print(f"  Accuracy:  {results['accuracy']:.4f}")
     console.print(f"  F1 Score:  {results['f1']:.4f}")
 

@@ -5,7 +5,7 @@ class TestHybridQCNN:
     def test_count_trainable_params(self):
         from medqcnn.model.hybrid import HybridQCNN
 
-        model = HybridQCNN(n_qubits=4, n_layers=2, n_classes=2)
+        model = HybridQCNN(n_qubits=4, n_layers=2, n_classes=2, pretrained=False)
         param_counts = model.count_trainable_params()
 
         assert "projector" in param_counts

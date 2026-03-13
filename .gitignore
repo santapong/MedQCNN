@@ -210,9 +210,9 @@ __marimo__/
 # MedQCNN Project-Specific
 # ──────────────────────────────────────────────
 
-# Data directories
-data/
-!data/.gitkeep
+# Data directories (top-level only, not medqcnn/data/)
+/data/
+!/data/.gitkeep
 
 # Model checkpoints
 checkpoints/
