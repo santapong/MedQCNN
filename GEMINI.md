@@ -107,13 +107,17 @@ To maintain rigorous forward momentum, we will manage this project using a Kanba
 
 ## 5. Future Roadmap
 
-### Phase 5: Production Hardening
-* Full training benchmark on BreastMNIST (50+ epochs, 8 qubits) with AUC-ROC comparison vs classical baseline
-* RAG integration via ChromaDB for clinical knowledge retrieval
-* DICOM format support with proper medical metadata parsing
-* Input validation, error handling, and rate limiting
+### Phase 5: Interactive Frontend & Database ✅
+* **Status:** Complete
+* SQLAlchemy ORM with PostgreSQL/SQLite for prediction history, training runs, and benchmarks
+* Batch prediction endpoint (`POST /predict/batch`) with up to 100 images per request
+* New API endpoints: `/predictions`, `/training-runs`, `/benchmarks` (paginated, filterable)
+* Auto-storage of predictions and training run metadata in database
+* Next.js frontend: batch upload, history, training dashboard, benchmarks pages
+* Interactive Recharts charts (loss/accuracy curves, parameter/memory/latency comparison)
+* Dark/light theme toggle, loading skeletons, CSV export
 
-### Phase 6: Quantum Hardware
+### Phase 6: Production Hardening
 * Test on Qiskit Aer simulator with noise models
 * Deploy to IBM Quantum hardware via `pennylane-qiskit` backend
 * Benchmark NISQ device performance vs state-vector simulation

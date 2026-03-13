@@ -1,6 +1,6 @@
 # ──────────────────────────────────────────────
 # MedQCNN — Docker Compose
-# Services: API Server + Kafka + Zookeeper
+# Services: API Server + PostgreSQL + Kafka
 # ──────────────────────────────────────────────
 
 services:
@@ -15,7 +15,10 @@ services:
       - ./data:/app/data
     environment:
       - PYTHONUNBUFFERED=1
+      - DATABASE_URL=postgresql://medqcnn:medqcnn@postgres:5432/medqcnn
     depends_on:
+      postgres:
+        condition: service_healthy
       kafka:
         condition: service_healthy
     restart: unless-stopped
@@ -23,6 +26,25 @@ services:
       resources:
         limits:
           memory: 8G # Edge-compute constraint
+
+  # --- PostgreSQL Database ---
+  postgres:
+    image: postgres:16-alpine
+    container_name: medqcnn-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=medqcnn
+      - POSTGRES_PASSWORD=medqcnn
+      - POSTGRES_DB=medqcnn
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U medqcnn"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
 
   # --- Apache Kafka ---
   kafka:
@@ -49,4 +71,5 @@ services:
     restart: unless-stopped
 
 volumes:
+  postgres_data:
   kafka_data:

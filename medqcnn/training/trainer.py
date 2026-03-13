@@ -6,10 +6,12 @@ Implements the Adam-optimizer-based training loop with:
 - Checkpoint saving/loading
 - Training and validation metrics logging
 - Progress tracking via Rich console
+- Auto-stores training run metadata in database on completion
 """
 
 from __future__ import annotations
 
+import logging
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -26,6 +28,8 @@ from medqcnn.config.constants import (
     DEFAULT_LEARNING_RATE,
 )
 
+logger = logging.getLogger("medqcnn.training")
+
 
 class Trainer:
     """Training manager for the HybridQCNN model.
@@ -37,6 +41,10 @@ class Trainer:
         learning_rate: Adam optimizer learning rate.
         checkpoint_dir: Directory for saving checkpoints.
         device: Compute device ('cpu' or 'cuda').
+        dataset_name: Name of the dataset being trained on.
+        n_qubits: Number of qubits in the quantum layer.
+        n_layers: Number of ansatz layers.
+        batch_size: Training batch size.
     """
 
     def __init__(
@@ -47,6 +55,10 @@ class Trainer:
         learning_rate: float = DEFAULT_LEARNING_RATE,
         checkpoint_dir: str = CHECKPOINT_DIR,
         device: str = "cpu",
+        dataset_name: str = "breastmnist",
+        n_qubits: int = 8,
+        n_layers: int = 4,
+        batch_size: int = 16,
     ) -> None:
         self.model = model.to(device)
         self.train_loader = train_loader
@@ -54,6 +66,13 @@ class Trainer:
         self.device = device
         self.checkpoint_dir = Path(checkpoint_dir)
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+
+        # Training config metadata
+        self.dataset_name = dataset_name
+        self.n_qubits = n_qubits
+        self.n_layers = n_layers
+        self.learning_rate = learning_rate
+        self.batch_size = batch_size
 
         self.optimizer = torch.optim.Adam(
             filter(lambda p: p.requires_grad, model.parameters()),
@@ -147,13 +166,15 @@ class Trainer:
         print(f"Training on device: {self.device}")
         print(f"Trainable params: {self.model.count_trainable_params()}")
 
+        start_time = time.time()
+
         for epoch in range(1, epochs + 1):
-            start_time = time.time()
+            epoch_start = time.time()
 
             train_loss, train_acc = self.train_epoch()
             val_loss, val_acc = self.validate()
 
-            elapsed = time.time() - start_time
+            elapsed = time.time() - epoch_start
 
             self.history["train_loss"].append(train_loss)
             self.history["val_loss"].append(val_loss)
@@ -174,7 +195,74 @@ class Trainer:
 
         # Save final checkpoint
         self.save_checkpoint(epochs, filename="model_final.pt")
+
+        total_duration = time.time() - start_time
+
+        # Auto-store training run in database
+        self._store_training_run(epochs, total_duration)
+
         return self.history
+
+    def _store_training_run(self, epochs: int, duration_seconds: float) -> None:
+        """Persist training run metadata to the database."""
+        try:
+            from medqcnn.db.connection import get_session, init_db
+            from medqcnn.db.crud import create_benchmark, create_training_run
+
+            init_db()
+            session = get_session()
+            try:
+                final_train_acc = (
+                    self.history["train_acc"][-1] if self.history["train_acc"] else None
+                )
+                final_val_acc = (
+                    self.history["val_acc"][-1] if self.history["val_acc"] else None
+                )
+
+                run = create_training_run(
+                    session,
+                    dataset=self.dataset_name,
+                    n_qubits=self.n_qubits,
+                    n_layers=self.n_layers,
+                    epochs=epochs,
+                    learning_rate=self.learning_rate,
+                    batch_size=self.batch_size,
+                    final_train_acc=final_train_acc,
+                    final_val_acc=final_val_acc,
+                    duration_seconds=duration_seconds,
+                    checkpoint_path=str(self.checkpoint_dir / "model_final.pt"),
+                    history=self.history,
+                )
+
+                # Store key metrics as benchmarks
+                param_counts = self.model.count_trainable_params()
+                for name, count in param_counts.items():
+                    create_benchmark(
+                        session,
+                        training_run_id=run.id,
+                        metric_name=f"params_{name}",
+                        metric_value=float(count),
+                    )
+                if final_train_acc is not None:
+                    create_benchmark(
+                        session,
+                        training_run_id=run.id,
+                        metric_name="final_train_acc",
+                        metric_value=final_train_acc,
+                    )
+                if final_val_acc is not None:
+                    create_benchmark(
+                        session,
+                        training_run_id=run.id,
+                        metric_name="final_val_acc",
+                        metric_value=final_val_acc,
+                    )
+
+                logger.info("Stored training run #%d in database", run.id)
+            finally:
+                session.close()
+        except Exception:
+            logger.warning("Failed to store training run in database", exc_info=True)
 
     def save_checkpoint(self, epoch: int, filename: str | None = None) -> None:
         """Save model checkpoint."""

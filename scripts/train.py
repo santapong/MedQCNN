@@ -179,6 +179,10 @@ def main() -> None:
         val_loader=resized_val,
         learning_rate=args.lr,
         device=str(device),
+        dataset_name=args.dataset,
+        n_qubits=args.n_qubits,
+        n_layers=args.n_layers,
+        batch_size=args.batch_size,
     )
 
     history = trainer.fit(

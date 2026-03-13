@@ -5,7 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] — Phase 5: Interactive Frontend & Database
+
+### Added — Database Layer (Sprint 5.1)
+- **SQLAlchemy ORM** — `medqcnn/db/` package with `models.py` (Prediction, TrainingRun, Benchmark tables), `connection.py` (engine/session management), and `crud.py` (create, list, get operations).
+- **PostgreSQL support** — Production database via Docker Compose. Falls back to SQLite for local development.
+- **Auto-storage** — Every `/predict` and `/predict/batch` result is automatically persisted to the database.
+- **New API endpoints**:
+  - `GET /predictions` — Paginated prediction history with label, confidence, and filename filters
+  - `GET /predictions/{id}` — Single prediction detail with full quantum analysis
+  - `GET /training-runs` — List training runs with metrics and loss/accuracy history
+  - `GET /training-runs/{id}` — Single training run detail
+  - `GET /benchmarks` — Aggregated benchmark metrics, filterable by training run
+
+### Added — Batch Prediction (Sprint 5.2)
+- **`POST /predict/batch`** — Accepts up to 100 base64-encoded images, returns per-image results with summary statistics (benign/malignant count, average confidence).
+- **Upload limit** increased from 10 MB to 250 MB per request.
+- **Frontend batch page** (`/batch`) — Multi-file drag-and-drop upload, file list with individual remove, batch results table with expandable rows showing probabilities and quantum values.
+
+### Added — Training & Benchmark Dashboards (Sprint 5.3)
+- **Trainer auto-storage** — `Trainer.fit()` now persists training run metadata (dataset, hyperparams, final metrics, full loss/accuracy history) to the database on completion. Key metrics are also stored as benchmark entries.
+- **Evaluate auto-storage** — `scripts/evaluate.py` stores test accuracy, F1, and AUC-ROC in the database.
+- **Training page** (`/training`) — Runs table with metrics, interactive Recharts loss/accuracy curve charts for selected run.
+- **Benchmarks page** (`/benchmarks`) — Reference comparison cards (4-qubit vs 8-qubit vs classical baseline), horizontal bar charts for parameter count, memory usage, and inference latency.
+- **Recharts** added as frontend dependency for interactive data visualization.
+
+### Added — Prediction History & UX Polish (Sprint 5.4)
+- **History page** (`/history`) — Paginated prediction list with label filter, filename search, and CSV export.
+- **Detail page** (`/history/{id}`) — Full prediction detail with classification, probabilities, quantum expectation values, and metadata.
+- **Dark/light theme toggle** — ThemeToggle component with localStorage persistence and CSS variable-based theming.
+- **Loading skeletons** — Skeleton, CardSkeleton, and TableSkeleton components for all data-fetching pages.
+- **Updated Navbar** — New navigation links for Batch, History, Training, Benchmarks pages.
+
+### Changed
+- **Docker Compose** — Added PostgreSQL 16 service with health check, persistent volume, and `DATABASE_URL` env var.
+- **Version** bumped to 0.2.0 across `pyproject.toml`, `package.json`, and API schemas.
+- **Dependencies** — Added `sqlalchemy>=2.0.0` and `psycopg2-binary>=2.9.0` to Python deps; `recharts` to frontend deps.
+
+## [0.1.0] — Phases 0–4
 
 ### Added — Next.js Web Dashboard (Frontend)
 - **Next.js 16 + Bun** — Full web dashboard in `frontend/` built with Next.js, TypeScript, and Tailwind CSS v4, managed with Bun.
