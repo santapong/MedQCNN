@@ -42,7 +42,8 @@ def _get_jwt_secret() -> str:
             return "medqcnn-dev-secret-change-me"
         raise RuntimeError(
             "JWT_SECRET_KEY environment variable is required. "
-            "Set it to a strong random string, or set MEDQCNN_AUTH_DISABLED=1 for development."
+            "Set it to a strong random string, or set "
+            "MEDQCNN_AUTH_DISABLED=1 for development."
         )
     return secret
 

@@ -87,7 +87,10 @@ class ModelService:
         max_decoded_bytes = 50 * 1024 * 1024
         if len(image_bytes) > max_decoded_bytes:
             raise ClientException(
-                detail=f"Decoded image too large ({len(image_bytes)} bytes). Max {max_decoded_bytes} bytes.",
+                detail=(
+                    f"Decoded image too large ({len(image_bytes)} bytes). "
+                    f"Max {max_decoded_bytes} bytes."
+                ),
                 status_code=413,
             )
 

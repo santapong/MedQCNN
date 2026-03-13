@@ -34,8 +34,6 @@ def _use_sqlite_memory():
 @pytest.fixture()
 def app():
     """Create a test app with a small 4-qubit model (no pretrained weights)."""
-    from unittest.mock import patch
-
     from litestar import Litestar
     from litestar.config.cors import CORSConfig
 
@@ -116,8 +114,9 @@ def client(app):
 @pytest.fixture()
 def sample_image_b64() -> str:
     """Generate a small valid grayscale PNG image as base64."""
-    from PIL import Image
     import io
+
+    from PIL import Image
 
     img = Image.fromarray(np.random.randint(0, 255, (28, 28), dtype=np.uint8), mode="L")
     buf = io.BytesIO()

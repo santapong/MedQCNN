@@ -139,7 +139,11 @@ async def predict(data: PredictionRequest) -> PredictionResponse:
                 probabilities=result.probabilities,
                 quantum_expectation_values=result.quantum_expectation_values,
                 image_hash=image_hash,
-                n_qubits=model_service.model.n_qubits if model_service.model else DEMO_QUBITS,
+                n_qubits=(
+                    model_service.model.n_qubits
+                    if model_service.model
+                    else DEMO_QUBITS
+                ),
             )
     except SQLAlchemyError:
         logger.warning("Failed to store prediction in database", exc_info=True)
@@ -194,7 +198,11 @@ async def predict_batch(data: BatchPredictionRequest) -> BatchPredictionResponse
                     probabilities=result.probabilities,
                     quantum_expectation_values=result.quantum_expectation_values,
                     image_filename=f"batch_{i}",
-                    n_qubits=model_service.model.n_qubits if model_service.model else DEMO_QUBITS,
+                    n_qubits=(
+                    model_service.model.n_qubits
+                    if model_service.model
+                    else DEMO_QUBITS
+                ),
                 )
     except SQLAlchemyError:
         logger.warning("Failed to store batch predictions in database", exc_info=True)

@@ -65,7 +65,12 @@ def list_predictions(
         q = q.filter(Prediction.confidence >= confidence_min)
     if filename_search:
         # Escape SQL LIKE wildcards to prevent injection
-        escaped = filename_search.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        escaped = (
+            filename_search
+            .replace("\\", "\\\\")
+            .replace("%", "\\%")
+            .replace("_", "\\_")
+        )
         q = q.filter(Prediction.image_filename.ilike(f"%{escaped}%", escape="\\"))
     total = q.count()
     rows = q.order_by(Prediction.created_at.desc()).offset(offset).limit(limit).all()
