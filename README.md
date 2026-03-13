@@ -83,6 +83,30 @@ Configure in your MCP client:
 }
 ```
 
+## Web Dashboard (Frontend)
+
+The project includes a Next.js web dashboard for interactive diagnosis.
+
+```bash
+# Start the backend API
+uv run python scripts/serve.py
+
+# In a separate terminal, start the frontend
+cd frontend
+bun install
+bun run dev
+# Open http://localhost:3000
+```
+
+**Pages:**
+- `/` — Upload medical images for quantum-classical diagnosis with real-time results
+- `/model` — View model architecture, parameter counts, and service health
+
+```bash
+# Production build
+cd frontend && bun run build && bun run start
+```
+
 ## Docker Deployment
 
 ```bash
@@ -108,6 +132,7 @@ MedQCNN/
 │   ├── mcp/                 # MCP server for AI agents
 │   └── utils/               # Logging, device management
 ├── scripts/                 # CLI scripts (demo, train, serve, mcp)
+├── frontend/                # Next.js web dashboard (Bun)
 ├── tests/                   # Unit tests
 ├── notebooks/               # Educational notebooks
 ├── Dockerfile               # Multi-stage container
@@ -132,7 +157,9 @@ MedQCNN/
 | Agent Protocol | MCP (Model Context Protocol) |
 | Message Broker | Apache Kafka |
 | Containerization | Docker, Docker Compose |
-| Package Manager | uv |
+| Frontend | Next.js 16, TypeScript, Tailwind CSS v4 |
+| Frontend Runtime | Bun |
+| Package Manager | uv (Python), Bun (JS) |
 
 ## Testing
 
