@@ -20,16 +20,18 @@ Usage:
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import io
 import logging
-from pathlib import Path
 
-import torch
 from litestar import Litestar, get, post
 from litestar.config.cors import CORSConfig
+from litestar.exceptions import ClientException
 from litestar.params import Parameter
+from sqlalchemy.exc import SQLAlchemyError
 
+from medqcnn.api.model_service import model_service
 from medqcnn.api.schemas import (
     BatchPredictionRequest,
     BatchPredictionResponse,
@@ -49,132 +51,9 @@ from medqcnn.api.schemas import (
     TokenResponse,
     TrainingRunListResponse,
 )
-from medqcnn.config.constants import DEMO_QUBITS, NUM_ANSATZ_LAYERS
-from medqcnn.model.hybrid import HybridQCNN
-from medqcnn.utils.device import get_device, set_seed
+from medqcnn.config.constants import DEMO_QUBITS
 
 logger = logging.getLogger("medqcnn.api")
-
-# --- Global model state ---
-_model: HybridQCNN | None = None
-_device: torch.device = torch.device("cpu")
-_labels: list[str] = ["Benign", "Malignant"]
-
-
-def load_model(
-    checkpoint_path: str | None = None,
-    n_qubits: int = DEMO_QUBITS,
-    n_layers: int = NUM_ANSATZ_LAYERS,
-    n_classes: int = 2,
-) -> None:
-    """Load the HybridQCNN model into global state."""
-    global _model, _device
-
-    set_seed()
-    _device = get_device()
-
-    _model = HybridQCNN(
-        n_qubits=n_qubits,
-        n_layers=n_layers,
-        n_classes=n_classes,
-        pretrained=True,
-    ).to(_device)
-
-    if checkpoint_path and Path(checkpoint_path).exists():
-        checkpoint = torch.load(checkpoint_path, map_location=_device)
-        _model.load_state_dict(checkpoint["model_state_dict"])
-
-    _model.eval()
-
-
-def _ensure_model() -> None:
-    """Lazy-load model if not already loaded."""
-    if _model is None:
-        load_model()
-
-
-def _run_inference(image_base64: str) -> PredictionResponse:
-    """Shared inference logic for single-image prediction."""
-    from litestar.exceptions import ClientException
-    from PIL import Image
-    from torchvision import transforms
-
-    _ensure_model()
-
-    # Validate base64 payload size (max 250 MB encoded)
-    max_payload_bytes = 250 * 1024 * 1024
-    if len(image_base64) > max_payload_bytes:
-        raise ClientException(
-            detail=f"Image payload too large. Max {max_payload_bytes} bytes.",
-            status_code=413,
-        )
-
-    try:
-        image_bytes = base64.b64decode(image_base64)
-    except Exception:
-        raise ClientException(
-            detail="Invalid base64 encoding.",
-            status_code=400,
-        )
-
-    # Validate decoded image size (max 50 MB)
-    max_decoded_bytes = 50 * 1024 * 1024
-    if len(image_bytes) > max_decoded_bytes:
-        raise ClientException(
-            detail=f"Decoded image too large ({len(image_bytes)} bytes). Max {max_decoded_bytes} bytes.",
-            status_code=413,
-        )
-
-    try:
-        image = Image.open(io.BytesIO(image_bytes))
-    except Exception:
-        raise ClientException(
-            detail="Cannot decode image. Supported formats: PNG, JPEG, BMP, TIFF.",
-            status_code=400,
-        )
-
-    max_dim = 4096
-    if image.width > max_dim or image.height > max_dim:
-        raise ClientException(
-            detail=(
-                f"Image dimensions too large ({image.width}x{image.height}). "
-                f"Max {max_dim}x{max_dim}."
-            ),
-            status_code=400,
-        )
-
-    image = image.convert("L")
-
-    transform = transforms.Compose(
-        [
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.5], std=[0.5]),
-        ]
-    )
-    tensor = transform(image).unsqueeze(0).to(_device)
-
-    with torch.no_grad():
-        logits = _model(tensor)
-        probs = torch.softmax(logits, dim=1)
-        pred = logits.argmax(dim=1).item()
-        confidence = probs[0, pred].item()
-
-    q_values = None
-    if hasattr(_model, "quantum_layer"):
-        with torch.no_grad():
-            features = _model.backbone(tensor)
-            z = _model.projector(features)
-            q_out = _model.quantum_layer(z)
-            q_values = q_out[0].cpu().tolist()
-
-    return PredictionResponse(
-        prediction=pred,
-        label=_labels[pred] if pred < len(_labels) else str(pred),
-        confidence=round(confidence, 6),
-        probabilities=probs[0].cpu().tolist(),
-        quantum_expectation_values=q_values,
-    )
 
 
 # ── Health & Info ────────────────────────────────────────
@@ -183,6 +62,8 @@ def _run_inference(image_base64: str) -> PredictionResponse:
 @get("/health")
 async def health_check() -> DetailedHealthResponse:
     """Enhanced health check with dependency statuses."""
+    from sqlalchemy import text
+
     from medqcnn.api.monitoring import metrics
     from medqcnn.utils.device import get_memory_info
 
@@ -192,18 +73,18 @@ async def health_check() -> DetailedHealthResponse:
         from medqcnn.db.connection import get_engine
 
         with get_engine().connect() as conn:
-            conn.execute(__import__("sqlalchemy").text("SELECT 1"))
+            conn.execute(text("SELECT 1"))
         db_ok = True
-    except Exception:
+    except SQLAlchemyError:
         pass
 
     mem_info = get_memory_info()
 
     return DetailedHealthResponse(
-        status="ok" if _model is not None else "degraded",
+        status="ok" if model_service.model is not None else "degraded",
         uptime_seconds=metrics.uptime_seconds,
         db_connected=db_ok,
-        model_loaded=_model is not None,
+        model_loaded=model_service.model is not None,
         model_version="0.2.0",
         memory_usage_mb=round(mem_info.get("ram_used_gb", 0) * 1024, 1),
     )
@@ -221,15 +102,15 @@ async def get_metrics() -> MetricsResponse:
 @get("/info")
 async def model_info() -> ModelInfoResponse:
     """Return model architecture details."""
-    _ensure_model()
+    model_service.ensure_loaded()
 
     return ModelInfoResponse(
-        n_qubits=_model.n_qubits,
-        latent_dim=2**_model.n_qubits,
-        n_ansatz_layers=_model.n_layers,
+        n_qubits=model_service.model.n_qubits,
+        latent_dim=2**model_service.model.n_qubits,
+        n_ansatz_layers=model_service.model.n_layers,
         n_classes=2,
-        trainable_params=_model.count_trainable_params(),
-        device=str(_device),
+        trainable_params=model_service.model.count_trainable_params(),
+        device=str(model_service.device),
     )
 
 
@@ -239,7 +120,7 @@ async def model_info() -> ModelInfoResponse:
 @post("/predict")
 async def predict(data: PredictionRequest) -> PredictionResponse:
     """Run inference on a base64-encoded medical image."""
-    result = _run_inference(data.image_base64)
+    result = model_service.run_inference(data.image_base64)
 
     # Auto-store in database
     try:
@@ -258,9 +139,9 @@ async def predict(data: PredictionRequest) -> PredictionResponse:
                 probabilities=result.probabilities,
                 quantum_expectation_values=result.quantum_expectation_values,
                 image_hash=image_hash,
-                n_qubits=_model.n_qubits if _model else DEMO_QUBITS,
+                n_qubits=model_service.model.n_qubits if model_service.model else DEMO_QUBITS,
             )
-    except Exception:
+    except SQLAlchemyError:
         logger.warning("Failed to store prediction in database", exc_info=True)
 
     return result
@@ -272,8 +153,6 @@ async def predict(data: PredictionRequest) -> PredictionResponse:
 @post("/predict/batch")
 async def predict_batch(data: BatchPredictionRequest) -> BatchPredictionResponse:
     """Run inference on multiple base64-encoded medical images."""
-    from litestar.exceptions import ClientException
-
     if len(data.images) == 0:
         raise ClientException(detail="No images provided.", status_code=400)
     if len(data.images) > 100:
@@ -284,10 +163,10 @@ async def predict_batch(data: BatchPredictionRequest) -> BatchPredictionResponse
 
     for i, img_b64 in enumerate(data.images):
         try:
-            result = _run_inference(img_b64)
+            result = model_service.run_inference(img_b64)
             results.append(result)
-        except Exception as e:
-            errors.append(f"Image {i}: {e}")
+        except ClientException as e:
+            errors.append(f"Image {i}: {e.detail}")
             results.append(
                 PredictionResponse(
                     prediction=-1,
@@ -315,9 +194,9 @@ async def predict_batch(data: BatchPredictionRequest) -> BatchPredictionResponse
                     probabilities=result.probabilities,
                     quantum_expectation_values=result.quantum_expectation_values,
                     image_filename=f"batch_{i}",
-                    n_qubits=_model.n_qubits if _model else DEMO_QUBITS,
+                    n_qubits=model_service.model.n_qubits if model_service.model else DEMO_QUBITS,
                 )
-    except Exception:
+    except SQLAlchemyError:
         logger.warning("Failed to store batch predictions in database", exc_info=True)
 
     # Summary
@@ -352,10 +231,6 @@ async def predict_dicom(
     data: dict,
 ) -> DicomPredictionResponse:
     """Run inference on a base64-encoded DICOM file with metadata extraction."""
-    import base64
-
-    from litestar.exceptions import ClientException
-
     from medqcnn.data.dicom import anonymize, dicom_to_pil, extract_metadata, read_dicom
 
     file_base64 = data.get("file_base64", "")
@@ -364,13 +239,13 @@ async def predict_dicom(
 
     try:
         file_bytes = base64.b64decode(file_base64)
-    except Exception:
+    except binascii.Error:
         raise ClientException(detail="Invalid base64 encoding.", status_code=400)
 
     try:
         ds = read_dicom(file_bytes)
-    except Exception:
-        raise ClientException(detail="Cannot parse DICOM file.", status_code=400)
+    except (ValueError, OSError) as exc:
+        raise ClientException(detail=f"Cannot parse DICOM file: {exc}", status_code=400)
 
     # Anonymize and extract metadata
     anonymize(ds)
@@ -379,19 +254,17 @@ async def predict_dicom(
     # Convert to PIL and run through standard inference
     try:
         pil_image = dicom_to_pil(ds)
-    except Exception:
+    except (ValueError, OSError) as exc:
         raise ClientException(
-            detail="Cannot extract pixel data from DICOM.", status_code=400
+            detail=f"Cannot extract pixel data from DICOM: {exc}", status_code=400
         )
 
-    # Encode as base64 PNG for reuse of _run_inference
-    import io
-
+    # Encode as base64 PNG for reuse of run_inference
     buf = io.BytesIO()
     pil_image.save(buf, format="PNG")
     image_b64 = base64.b64encode(buf.getvalue()).decode()
 
-    result = _run_inference(image_b64)
+    result = model_service.run_inference(image_b64)
 
     return DicomPredictionResponse(
         prediction=result.prediction,
@@ -454,8 +327,6 @@ async def list_predictions_endpoint(
 @get("/predictions/{prediction_id:int}")
 async def get_prediction_endpoint(prediction_id: int) -> PredictionDetail:
     """Get a single prediction by ID."""
-    from litestar.exceptions import ClientException
-
     from medqcnn.db.connection import db_session
     from medqcnn.db.crud import get_prediction
 
@@ -503,8 +374,6 @@ async def list_training_runs_endpoint(
 @get("/training-runs/{run_id:int}")
 async def get_training_run_endpoint(run_id: int) -> dict:
     """Get a single training run by ID."""
-    from litestar.exceptions import ClientException
-
     from medqcnn.db.connection import db_session
     from medqcnn.db.crud import get_training_run
 
@@ -596,8 +465,6 @@ async def list_models() -> ModelListResponse:
 @post("/models/{version:str}/activate")
 async def activate_model(version: str) -> dict:
     """Set the active model version."""
-    from litestar.exceptions import ClientException
-
     registry = _get_registry()
     try:
         registry.set_active_version(version)
@@ -618,7 +485,7 @@ def create_app(checkpoint_path: str | None = None) -> Litestar:
     from medqcnn.api.security import SecurityHeadersMiddleware
     from medqcnn.db.connection import init_db
 
-    load_model(checkpoint_path=checkpoint_path)
+    model_service.load(checkpoint_path=checkpoint_path)
     init_db()
 
     # CORS: configurable via env, defaults to localhost for dev safety
