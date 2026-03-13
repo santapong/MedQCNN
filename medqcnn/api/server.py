@@ -243,12 +243,10 @@ async def predict(data: PredictionRequest) -> PredictionResponse:
 
     # Auto-store in database
     try:
-        from medqcnn.db.connection import get_session, init_db
+        from medqcnn.db.connection import db_session
         from medqcnn.db.crud import create_prediction
 
-        init_db()
-        session = get_session()
-        try:
+        with db_session() as session:
             image_hash = hashlib.sha256(data.image_base64.encode()[:1024]).hexdigest()[
                 :16
             ]
@@ -262,8 +260,6 @@ async def predict(data: PredictionRequest) -> PredictionResponse:
                 image_hash=image_hash,
                 n_qubits=_model.n_qubits if _model else DEMO_QUBITS,
             )
-        finally:
-            session.close()
     except Exception:
         logger.warning("Failed to store prediction in database", exc_info=True)
 
@@ -304,12 +300,10 @@ async def predict_batch(data: BatchPredictionRequest) -> BatchPredictionResponse
 
     # Auto-store successful predictions
     try:
-        from medqcnn.db.connection import get_session, init_db
+        from medqcnn.db.connection import db_session
         from medqcnn.db.crud import create_prediction
 
-        init_db()
-        session = get_session()
-        try:
+        with db_session() as session:
             for i, result in enumerate(results):
                 if result.label == "error":
                     continue
@@ -323,8 +317,6 @@ async def predict_batch(data: BatchPredictionRequest) -> BatchPredictionResponse
                     image_filename=f"batch_{i}",
                     n_qubits=_model.n_qubits if _model else DEMO_QUBITS,
                 )
-        finally:
-            session.close()
     except Exception:
         logger.warning("Failed to store batch predictions in database", exc_info=True)
 
@@ -424,12 +416,10 @@ async def list_predictions_endpoint(
 ) -> PaginatedPredictions:
     """List prediction history with filtering and pagination."""
     from medqcnn.api.security import sanitize_filename_search
-    from medqcnn.db.connection import get_session, init_db
+    from medqcnn.db.connection import db_session
     from medqcnn.db.crud import list_predictions
 
-    init_db()
-    session = get_session()
-    try:
+    with db_session() as session:
         rows, total = list_predictions(
             session,
             offset=offset,
@@ -459,8 +449,6 @@ async def list_predictions_endpoint(
             offset=offset,
             limit=limit,
         )
-    finally:
-        session.close()
 
 
 @get("/predictions/{prediction_id:int}")
@@ -468,12 +456,10 @@ async def get_prediction_endpoint(prediction_id: int) -> PredictionDetail:
     """Get a single prediction by ID."""
     from litestar.exceptions import ClientException
 
-    from medqcnn.db.connection import get_session, init_db
+    from medqcnn.db.connection import db_session
     from medqcnn.db.crud import get_prediction
 
-    init_db()
-    session = get_session()
-    try:
+    with db_session() as session:
         row = get_prediction(session, prediction_id)
         if row is None:
             raise ClientException(detail="Prediction not found.", status_code=404)
@@ -490,8 +476,6 @@ async def get_prediction_endpoint(prediction_id: int) -> PredictionDetail:
             n_qubits=row.n_qubits,
             created_at=row.created_at.isoformat() if row.created_at else None,
         )
-    finally:
-        session.close()
 
 
 # ── Training Runs ────────────────────────────────────────
@@ -503,12 +487,10 @@ async def list_training_runs_endpoint(
     limit: int = Parameter(default=50, ge=1, le=200),
 ) -> TrainingRunListResponse:
     """List training runs with metrics."""
-    from medqcnn.db.connection import get_session, init_db
+    from medqcnn.db.connection import db_session
     from medqcnn.db.crud import list_training_runs
 
-    init_db()
-    session = get_session()
-    try:
+    with db_session() as session:
         rows, total = list_training_runs(session, offset=offset, limit=limit)
         return TrainingRunListResponse(
             items=[r.to_dict() for r in rows],
@@ -516,8 +498,6 @@ async def list_training_runs_endpoint(
             offset=offset,
             limit=limit,
         )
-    finally:
-        session.close()
 
 
 @get("/training-runs/{run_id:int}")
@@ -525,18 +505,14 @@ async def get_training_run_endpoint(run_id: int) -> dict:
     """Get a single training run by ID."""
     from litestar.exceptions import ClientException
 
-    from medqcnn.db.connection import get_session, init_db
+    from medqcnn.db.connection import db_session
     from medqcnn.db.crud import get_training_run
 
-    init_db()
-    session = get_session()
-    try:
+    with db_session() as session:
         row = get_training_run(session, run_id)
         if row is None:
             raise ClientException(detail="Training run not found.", status_code=404)
         return row.to_dict()
-    finally:
-        session.close()
 
 
 # ── Benchmarks ───────────────────────────────────────────
@@ -549,12 +525,10 @@ async def list_benchmarks_endpoint(
     limit: int = Parameter(default=100, ge=1, le=500),
 ) -> BenchmarkListResponse:
     """List benchmarks, optionally filtered by training run."""
-    from medqcnn.db.connection import get_session, init_db
+    from medqcnn.db.connection import db_session
     from medqcnn.db.crud import list_benchmarks
 
-    init_db()
-    session = get_session()
-    try:
+    with db_session() as session:
         rows, total = list_benchmarks(
             session,
             training_run_id=training_run_id,
@@ -567,8 +541,6 @@ async def list_benchmarks_endpoint(
             offset=offset,
             limit=limit,
         )
-    finally:
-        session.close()
 
 
 # ── Authentication ───────────────────────────────────────

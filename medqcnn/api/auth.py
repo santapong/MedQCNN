@@ -86,16 +86,12 @@ def _validate_api_key(key: str) -> bool:
 
     # Check database for stored API keys
     try:
-        from medqcnn.db.connection import get_session, init_db
+        from medqcnn.db.connection import db_session
         from medqcnn.db.crud import get_active_api_key_by_hash
 
-        init_db()
-        session = get_session()
-        try:
+        with db_session() as session:
             key_hash = hash_api_key(key)
             return get_active_api_key_by_hash(session, key_hash) is not None
-        finally:
-            session.close()
     except Exception:
         logger.debug(
             "DB API key lookup failed, falling back to env-only", exc_info=True

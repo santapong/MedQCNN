@@ -206,12 +206,10 @@ class Trainer:
     def _store_training_run(self, epochs: int, duration_seconds: float) -> None:
         """Persist training run metadata to the database."""
         try:
-            from medqcnn.db.connection import get_session, init_db
+            from medqcnn.db.connection import db_session
             from medqcnn.db.crud import create_benchmark, create_training_run
 
-            init_db()
-            session = get_session()
-            try:
+            with db_session() as session:
                 final_train_acc = (
                     self.history["train_acc"][-1] if self.history["train_acc"] else None
                 )
@@ -259,8 +257,6 @@ class Trainer:
                     )
 
                 logger.info("Stored training run #%d in database", run.id)
-            finally:
-                session.close()
         except Exception:
             logger.warning("Failed to store training run in database", exc_info=True)
 
