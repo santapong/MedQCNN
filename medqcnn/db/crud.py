@@ -8,7 +8,7 @@ import json
 
 from sqlalchemy.orm import Session
 
-from medqcnn.db.models import Benchmark, Prediction, TrainingRun
+from medqcnn.db.models import APIKey, Benchmark, Prediction, TrainingRun
 
 # ── Predictions ──────────────────────────────────────────
 
@@ -173,3 +173,29 @@ def list_benchmarks(
     total = q.count()
     rows = q.order_by(Benchmark.created_at.desc()).offset(offset).limit(limit).all()
     return rows, total
+
+
+# ── API Keys ────────────────────────────────────────────
+
+
+def create_api_key(
+    session: Session,
+    *,
+    name: str,
+    key_hash: str,
+) -> APIKey:
+    """Insert a new API key (stores hash only)."""
+    row = APIKey(name=name, key_hash=key_hash, is_active=True)
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return row
+
+
+def get_active_api_key_by_hash(session: Session, key_hash: str) -> APIKey | None:
+    """Look up an active API key by its hash."""
+    return (
+        session.query(APIKey)
+        .filter(APIKey.key_hash == key_hash, APIKey.is_active.is_(True))
+        .first()
+    )

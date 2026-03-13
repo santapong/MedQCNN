@@ -34,12 +34,19 @@ from medqcnn.api.schemas import (
     BatchPredictionRequest,
     BatchPredictionResponse,
     BenchmarkListResponse,
-    HealthResponse,
+    DetailedHealthResponse,
+    DicomMetadata,
+    DicomPredictionResponse,
+    MetricsResponse,
     ModelInfoResponse,
+    ModelListResponse,
+    ModelVersionInfo,
     PaginatedPredictions,
     PredictionDetail,
     PredictionRequest,
     PredictionResponse,
+    TokenRequest,
+    TokenResponse,
     TrainingRunListResponse,
 )
 from medqcnn.config.constants import DEMO_QUBITS, NUM_ANSATZ_LAYERS
@@ -166,9 +173,41 @@ def _run_inference(image_base64: str) -> PredictionResponse:
 
 
 @get("/health")
-async def health_check() -> HealthResponse:
-    """Service health check."""
-    return HealthResponse()
+async def health_check() -> DetailedHealthResponse:
+    """Enhanced health check with dependency statuses."""
+    from medqcnn.api.monitoring import metrics
+    from medqcnn.utils.device import get_memory_info
+
+    # Check database connectivity
+    db_ok = False
+    try:
+        from medqcnn.db.connection import get_engine
+
+        with get_engine().connect() as conn:
+            conn.execute(__import__("sqlalchemy").text("SELECT 1"))
+        db_ok = True
+    except Exception:
+        pass
+
+    mem_info = get_memory_info()
+
+    return DetailedHealthResponse(
+        status="ok" if _model is not None else "degraded",
+        uptime_seconds=metrics.uptime_seconds,
+        db_connected=db_ok,
+        model_loaded=_model is not None,
+        model_version="0.2.0",
+        memory_usage_mb=round(mem_info.get("ram_used_gb", 0) * 1024, 1),
+    )
+
+
+@get("/metrics")
+async def get_metrics() -> MetricsResponse:
+    """Return API usage metrics."""
+    from medqcnn.api.monitoring import metrics
+
+    snap = metrics.snapshot()
+    return MetricsResponse(**snap)
 
 
 @get("/info")
@@ -202,9 +241,9 @@ async def predict(data: PredictionRequest) -> PredictionResponse:
         init_db()
         session = get_session()
         try:
-            image_hash = hashlib.sha256(
-                data.image_base64.encode()[:1024]
-            ).hexdigest()[:16]
+            image_hash = hashlib.sha256(data.image_base64.encode()[:1024]).hexdigest()[
+                :16
+            ]
             create_prediction(
                 session,
                 prediction=result.prediction,
@@ -305,6 +344,65 @@ async def predict_batch(data: BatchPredictionRequest) -> BatchPredictionResponse
     )
 
 
+# ── DICOM Prediction ───────────────────────────────────
+
+
+@post("/predict/dicom")
+async def predict_dicom(
+    data: dict,
+) -> DicomPredictionResponse:
+    """Run inference on a base64-encoded DICOM file with metadata extraction."""
+    import base64
+
+    from litestar.exceptions import ClientException
+
+    from medqcnn.data.dicom import anonymize, dicom_to_pil, extract_metadata, read_dicom
+
+    file_base64 = data.get("file_base64", "")
+    if not file_base64:
+        raise ClientException(detail="Missing file_base64 field.", status_code=400)
+
+    try:
+        file_bytes = base64.b64decode(file_base64)
+    except Exception:
+        raise ClientException(detail="Invalid base64 encoding.", status_code=400)
+
+    try:
+        ds = read_dicom(file_bytes)
+    except Exception:
+        raise ClientException(detail="Cannot parse DICOM file.", status_code=400)
+
+    # Anonymize and extract metadata
+    anonymize(ds)
+    metadata = extract_metadata(ds)
+
+    # Convert to PIL and run through standard inference
+    try:
+        pil_image = dicom_to_pil(ds)
+    except Exception:
+        raise ClientException(
+            detail="Cannot extract pixel data from DICOM.", status_code=400
+        )
+
+    # Encode as base64 PNG for reuse of _run_inference
+    import io
+
+    buf = io.BytesIO()
+    pil_image.save(buf, format="PNG")
+    image_b64 = base64.b64encode(buf.getvalue()).decode()
+
+    result = _run_inference(image_b64)
+
+    return DicomPredictionResponse(
+        prediction=result.prediction,
+        label=result.label,
+        confidence=result.confidence,
+        probabilities=result.probabilities,
+        quantum_expectation_values=result.quantum_expectation_values,
+        dicom_metadata=DicomMetadata(**metadata),
+    )
+
+
 # ── Prediction History ───────────────────────────────────
 
 
@@ -317,6 +415,7 @@ async def list_predictions_endpoint(
     filename: str | None = None,
 ) -> PaginatedPredictions:
     """List prediction history with filtering and pagination."""
+    from medqcnn.api.security import sanitize_filename_search
     from medqcnn.db.connection import get_session, init_db
     from medqcnn.db.crud import list_predictions
 
@@ -329,7 +428,7 @@ async def list_predictions_endpoint(
             limit=limit,
             label_filter=label,
             confidence_min=confidence_min,
-            filename_search=filename,
+            filename_search=sanitize_filename_search(filename),
         )
         return PaginatedPredictions(
             items=[
@@ -464,15 +563,86 @@ async def list_benchmarks_endpoint(
         session.close()
 
 
+# ── Authentication ───────────────────────────────────────
+
+
+@post("/auth/token")
+async def get_auth_token(data: TokenRequest) -> TokenResponse:
+    """Exchange an API key for a JWT token."""
+    from litestar.exceptions import NotAuthorizedException
+
+    from medqcnn.api.auth import _validate_api_key, create_jwt_token
+
+    if not _validate_api_key(data.api_key):
+        raise NotAuthorizedException(detail="Invalid API key")
+
+    token = create_jwt_token(subject="api_key_user")
+    return TokenResponse(access_token=token, token_type="bearer")
+
+
+# ── Model Versioning ────────────────────────────────────
+
+_registry = None
+
+
+def _get_registry():
+    """Lazy-init model registry."""
+    global _registry
+    if _registry is None:
+        from medqcnn.model.registry import ModelRegistry
+
+        _registry = ModelRegistry()
+    return _registry
+
+
+@get("/models")
+async def list_models() -> ModelListResponse:
+    """List all available model versions."""
+    registry = _get_registry()
+    versions = registry.list_versions()
+    return ModelListResponse(
+        versions=[
+            ModelVersionInfo(
+                version=v.version,
+                path=v.path,
+                size_mb=round(v.size_bytes / (1024 * 1024), 2),
+            )
+            for v in versions
+        ],
+        active_version=registry.active_version,
+    )
+
+
+@post("/models/{version:str}/activate")
+async def activate_model(version: str) -> dict:
+    """Set the active model version."""
+    from litestar.exceptions import ClientException
+
+    registry = _get_registry()
+    try:
+        registry.set_active_version(version)
+    except ValueError as e:
+        raise ClientException(detail=str(e), status_code=404)
+    return {"status": "ok", "active_version": version}
+
+
 # ── App Factory ──────────────────────────────────────────
 
 
 def create_app(checkpoint_path: str | None = None) -> Litestar:
     """Create and return the Litestar application."""
+    import os
+
+    from medqcnn.api.auth import MedQCNNAuthMiddleware
+    from medqcnn.api.rate_limit import RateLimitMiddleware
+    from medqcnn.api.security import SecurityHeadersMiddleware
     from medqcnn.db.connection import init_db
 
     load_model(checkpoint_path=checkpoint_path)
     init_db()
+
+    # CORS: configurable via env, defaults to permissive for dev
+    allowed_origins = os.environ.get("CORS_ALLOWED_ORIGINS", "*").split(",")
 
     return Litestar(
         route_handlers=[
@@ -485,6 +655,16 @@ def create_app(checkpoint_path: str | None = None) -> Litestar:
             list_training_runs_endpoint,
             get_training_run_endpoint,
             list_benchmarks_endpoint,
+            get_auth_token,
+            list_models,
+            activate_model,
+            predict_dicom,
+            get_metrics,
         ],
-        cors_config=CORSConfig(allow_origins=["*"]),
+        middleware=[
+            SecurityHeadersMiddleware,
+            MedQCNNAuthMiddleware,
+            RateLimitMiddleware,
+        ],
+        cors_config=CORSConfig(allow_origins=allowed_origins),
     )

@@ -119,3 +119,89 @@ class BenchmarkListResponse(Struct):
     total: int
     offset: int
     limit: int
+
+
+# ── Authentication ──────────────────────────────────────
+
+
+class TokenRequest(Struct):
+    """Exchange API key for JWT token."""
+
+    api_key: str
+
+
+class TokenResponse(Struct):
+    """JWT token response."""
+
+    access_token: str
+    token_type: str = "bearer"
+
+
+# ── Model Versioning ────────────────────────────────────
+
+
+class ModelVersionInfo(Struct):
+    """Single model version metadata."""
+
+    version: str
+    path: str
+    size_mb: float
+
+
+class ModelListResponse(Struct):
+    """List of available model versions."""
+
+    versions: list[ModelVersionInfo]
+    active_version: str | None
+
+
+# ── DICOM ───────────────────────────────────────────────
+
+
+class DicomMetadata(Struct):
+    """Anonymized DICOM study metadata."""
+
+    modality: str | None = None
+    study_description: str | None = None
+    body_part: str | None = None
+    study_date: str | None = None
+    institution: str | None = None
+    rows: int | None = None
+    columns: int | None = None
+
+
+class DicomPredictionResponse(Struct):
+    """Prediction result with DICOM metadata."""
+
+    prediction: int
+    label: str
+    confidence: float
+    probabilities: list[float] | None = None
+    quantum_expectation_values: list[float] | None = None
+    dicom_metadata: DicomMetadata | None = None
+
+
+# ── Monitoring ──────────────────────────────────────────
+
+
+class DetailedHealthResponse(Struct):
+    """Enhanced health check with dependency statuses."""
+
+    status: str = "ok"
+    service: str = "medqcnn"
+    version: str = "0.2.0"
+    uptime_seconds: float = 0.0
+    db_connected: bool = False
+    model_loaded: bool = False
+    model_version: str | None = None
+    memory_usage_mb: float = 0.0
+
+
+class MetricsResponse(Struct):
+    """API usage metrics."""
+
+    total_requests: int = 0
+    total_predictions: int = 0
+    avg_latency_ms: float = 0.0
+    error_count: int = 0
+    uptime_seconds: float = 0.0

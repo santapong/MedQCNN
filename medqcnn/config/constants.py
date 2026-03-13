@@ -52,6 +52,28 @@ DEFAULT_EPOCHS: int = 50
 """Default number of training epochs."""
 
 # ──────────────────────────────────────────────
+# Authentication
+# ──────────────────────────────────────────────
+JWT_ALGORITHM: str = "HS256"
+JWT_EXPIRE_MINUTES: int = 60
+"""Default JWT token expiry in minutes."""
+
+# ──────────────────────────────────────────────
+# Rate Limiting
+# ──────────────────────────────────────────────
+RATE_LIMIT_PREDICT: int = 30
+"""Max requests per minute for /predict."""
+
+RATE_LIMIT_BATCH: int = 10
+"""Max requests per minute for /predict/batch."""
+
+# ──────────────────────────────────────────────
+# Model Versioning
+# ──────────────────────────────────────────────
+MAX_CACHED_MODELS: int = 2
+"""Max number of model versions kept in memory (edge RAM constraint)."""
+
+# ──────────────────────────────────────────────
 # Paths (relative to project root)
 # ──────────────────────────────────────────────
 DATA_DIR: str = "data"
