@@ -27,6 +27,7 @@ from medqcnn.config.constants import (
     DEFAULT_EPOCHS,
     DEFAULT_LEARNING_RATE,
 )
+from medqcnn.training.loss import HybridLoss
 
 logger = logging.getLogger("medqcnn.training")
 
@@ -78,7 +79,7 @@ class Trainer:
             filter(lambda p: p.requires_grad, model.parameters()),
             lr=learning_rate,
         )
-        self.criterion = nn.CrossEntropyLoss()
+        self.criterion = HybridLoss(l2_lambda=1e-4)
 
         # Training history
         self.history: dict[str, list[float]] = {
@@ -105,7 +106,16 @@ class Trainer:
 
             self.optimizer.zero_grad()
             logits = self.model(images)
-            loss = self.criterion(logits, labels)
+
+            # Gather quantum parameters for L2 regularization
+            quantum_params = None
+            if hasattr(self.model, "quantum_layer"):
+                quantum_params = torch.cat(
+                    [p.flatten() for p in self.model.quantum_layer.parameters()
+                     if p.requires_grad]
+                )
+
+            loss = self.criterion(logits, labels, quantum_params=quantum_params)
             loss.backward()
             self.optimizer.step()
 
@@ -138,7 +148,8 @@ class Trainer:
             labels = labels.to(self.device).squeeze()
 
             logits = self.model(images)
-            loss = self.criterion(logits, labels)
+            # Validation loss uses CE only (no regularization)
+            loss = self.criterion.ce_loss(logits, labels)
 
             total_loss += loss.item()
             preds = logits.argmax(dim=1)
