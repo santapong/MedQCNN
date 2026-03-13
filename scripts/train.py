@@ -84,6 +84,18 @@ def parse_args() -> argparse.Namespace:
         help="Save checkpoint every N epochs (default: 10)",
     )
     parser.add_argument(
+        "--patience",
+        type=int,
+        default=10,
+        help="Early stopping patience in epochs (0 to disable, default: 10)",
+    )
+    parser.add_argument(
+        "--resume",
+        type=str,
+        default=None,
+        help="Path to checkpoint to resume training from",
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         default=42,
@@ -185,9 +197,22 @@ def main() -> None:
         batch_size=args.batch_size,
     )
 
+    # Resume from checkpoint if specified
+    resume_from = 0
+    if args.resume:
+        resume_path = Path(args.resume)
+        if resume_path.exists():
+            resume_from = trainer.load_checkpoint(resume_path)
+            console.print(f"  Resumed from checkpoint: {args.resume} (epoch {resume_from})")
+        else:
+            console.print(f"[bold red]Checkpoint not found: {args.resume}[/bold red]")
+            sys.exit(1)
+
     history = trainer.fit(
         epochs=args.epochs,
         save_every=args.save_every,
+        patience=args.patience,
+        resume_from=resume_from,
     )
 
     # Summary
