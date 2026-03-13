@@ -162,6 +162,52 @@ def main() -> None:
         plot_roc_curve(results["y_true"], results["y_score"])
         console.print("  Saved: docs/roc_curve.png")
 
+    # Store evaluation results in database
+    try:
+        from medqcnn.db.connection import get_session, init_db
+        from medqcnn.db.crud import create_benchmark, create_training_run
+
+        init_db()
+        session = get_session()
+        try:
+            run = create_training_run(
+                session,
+                dataset=args.dataset,
+                n_qubits=args.n_qubits,
+                n_layers=args.n_layers,
+                epochs=0,
+                learning_rate=0.0,
+                batch_size=args.batch_size,
+                final_test_acc=results["accuracy"],
+                auc_roc=results.get("auc_roc"),
+                f1=results["f1"],
+                checkpoint_path=args.checkpoint,
+            )
+            create_benchmark(
+                session,
+                training_run_id=run.id,
+                metric_name="test_accuracy",
+                metric_value=results["accuracy"],
+            )
+            create_benchmark(
+                session,
+                training_run_id=run.id,
+                metric_name="test_f1",
+                metric_value=results["f1"],
+            )
+            if "auc_roc" in results:
+                create_benchmark(
+                    session,
+                    training_run_id=run.id,
+                    metric_name="test_auc_roc",
+                    metric_value=results["auc_roc"],
+                )
+            console.print("  [green]Results stored in database[/green]")
+        finally:
+            session.close()
+    except Exception:
+        console.print("  [yellow]Warning: Could not store results in database[/yellow]")
+
     console.rule("[bold green]Evaluation Complete[/bold green]")
 
 

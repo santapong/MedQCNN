@@ -1,6 +1,6 @@
 [project]
 name = "medqcnn"
-version = "0.1.0"
+version = "0.2.0"
 description = "Hybrid Quantum-Classical CNN for Medical Diagnostics — CaaS-Q Pipeline"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -28,6 +28,10 @@ dependencies = [
     "psutil>=7.0.0",
     "jupyter>=1.1.1",
     "ipykernel>=7.2.0",
+    # --- Database (Phase 5) ---
+    "sqlalchemy>=2.0.0",
+    "psycopg2-binary>=2.9.0",
+    # --- API ---
     "litestar>=2.21.0",
     "uvicorn>=0.41.0",
     "mcp>=1.26.0",
