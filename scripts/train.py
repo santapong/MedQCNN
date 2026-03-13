@@ -133,7 +133,7 @@ def main() -> None:
     n_classes = len(info["label"])
 
     # Model
-    console.print(f"\n[bold yellow]Building HybridQCNN...[/bold yellow]")
+    console.print("\n[bold yellow]Building HybridQCNN...[/bold yellow]")
     model = HybridQCNN(
         n_qubits=args.n_qubits,
         n_layers=args.n_layers,
@@ -192,7 +192,7 @@ def main() -> None:
     final_val_acc = history["val_acc"][-1]
     console.print(f"  Final Train Acc: {final_train_acc:.4f}")
     console.print(f"  Final Val Acc:   {final_val_acc:.4f}")
-    console.print(f"  Checkpoints saved to: checkpoints/")
+    console.print("  Checkpoints saved to: checkpoints/")
 
 
 if __name__ == "__main__":

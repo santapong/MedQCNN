@@ -17,16 +17,19 @@ from __future__ import annotations
 
 import json
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import SystemMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 from medqcnn.agent.tools import ALL_TOOLS
 
 # --- System prompt for the Medical Diagnostic Agent ---
-MEDICAL_AGENT_SYSTEM_PROMPT = """You are a Medical Diagnostic AI Agent powered by MedQCNN — a hybrid quantum-classical neural network for medical image analysis.
+MEDICAL_AGENT_SYSTEM_PROMPT = """\
+You are a Medical Diagnostic AI Agent powered by MedQCNN \
+— a hybrid quantum-classical neural network for medical image analysis.
 
 Your capabilities:
-1. **quantum_diagnose**: Analyze medical images using quantum-enhanced inference (amplitude encoding + variational quantum circuit)
+1. **quantum_diagnose**: Analyze medical images using quantum-enhanced \
+inference (amplitude encoding + variational quantum circuit)
 2. **get_model_info**: Explain the quantum-classical architecture
 3. **list_medical_datasets**: Show available benchmark datasets
 
@@ -135,7 +138,10 @@ def run_diagnostic_without_llm(image_path: str) -> str:
   Qubits:          {diagnosis["model"]["qubits"]}
   Ansatz Layers:   {diagnosis["model"]["ansatz_layers"]}
   Expectation Values (⟨σ_z⟩ per qubit):
-    {" | ".join(f"Q{i}: {v:+.4f}" for i, v in enumerate(diagnosis["quantum_expectation_values"]))}
+    {" | ".join(
+        f"Q{i}: {v:+.4f}"
+        for i, v in enumerate(diagnosis["quantum_expectation_values"])
+    )}
 
   Note: Values near -1 indicate features correlated with
   malignancy; values near +1 indicate benign features.

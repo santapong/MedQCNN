@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Next.js Web Dashboard (Frontend)
+- **Next.js 16 + Bun** — Full web dashboard in `frontend/` built with Next.js, TypeScript, and Tailwind CSS v4, managed with Bun.
+- **Diagnose Page** (`/`) — Drag-and-drop image upload with live preview, automatic quantum inference via the REST API, and results display including:
+  - Benign/Malignant classification with confidence score
+  - Probability bar visualization
+  - Per-qubit Pauli-Z expectation value chart with color-coded bars
+  - Interactive pipeline step indicator (Image → ResNet-18 → Projector → Quantum → Classify)
+  - Medical disclaimer
+- **Model Info Page** (`/model`) — Live model architecture dashboard showing:
+  - Service health status from `/health` endpoint
+  - Quantum configuration (qubits, latent dim, ansatz layers)
+  - Trainable parameter breakdown by component
+  - Visual pipeline architecture diagram
+- **Components** — `Navbar`, `ImageUploader` (drag-and-drop), `DiagnosisResult`, `QuantumBar` (expectation value visualizer)
+- **API Client** (`src/lib/api.ts`) — Typed fetch wrappers for `/health`, `/info`, `/predict` with base64 encoding utility
+- **API Proxy** — Next.js rewrites proxy `/api/*` to `localhost:8000` for seamless backend integration
+
+### Added — Project Completion & CI/CD
+- **Data Module** — `medqcnn/data/` with `loader.py` (MedMNIST DataLoaders) and `preprocessing.py` (normalize, resize, slice extraction, pipeline)
+- **GitHub Actions CI** — `.github/workflows/ci.yml` with lint (ruff) and test (pytest) jobs
+- **API Input Validation** — Size limits, base64 validation, format checks, dimension limits on `/predict`
+- **Benchmarks** — `docs/benchmarks.md` with parameter counts, memory profile, latency measurements
+
+### Fixed
+- `pyproject.toml`: `dotenv` → `python-dotenv` (correct PyPI package), added missing `langgraph` dependency
+- `.gitignore`: Fixed `data/` pattern to only match top-level directory, not `medqcnn/data/`
+- `test_model.py`: Use `pretrained=False` to avoid network dependency in tests
+- Removed unused imports and fixed ruff lint warnings across all Python sources
+
 ### Added — LangChain Agent Integration (CaaS-Q)
 - **LangChain Tools** — `medqcnn/agent/tools.py` with 3 `@tool`-decorated functions:
   - `quantum_diagnose` — run quantum-classical inference on medical images

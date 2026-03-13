@@ -14,8 +14,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+/lib/
+/lib64/
 parts/
 sdist/
 var/
@@ -210,9 +210,9 @@ __marimo__/
 # MedQCNN Project-Specific
 # ──────────────────────────────────────────────
 
-# Data directories
-data/
-!data/.gitkeep
+# Data directories (top-level only, not medqcnn/data/)
+/data/
+!/data/.gitkeep
 
 # Model checkpoints
 checkpoints/

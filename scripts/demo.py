@@ -36,14 +36,14 @@ def run_demo() -> None:
     n_qubits = DEMO_QUBITS  # 4 qubits → 16-dim latent (fast!)
     latent_dim = 2**n_qubits  # 16
 
-    console.print(f"\n[bold]Configuration:[/bold]")
+    console.print("\n[bold]Configuration:[/bold]")
     console.print(f"  Qubits:        {n_qubits}")
     console.print(f"  Latent dim:    {latent_dim}")
     console.print(f"  Ansatz layers: {NUM_ANSATZ_LAYERS}")
     console.print(f"  Device:        {device}")
 
     # --- Step 1: Load a small MedMNIST dataset ---
-    console.print(f"\n[bold yellow]Step 1:[/bold yellow] Loading BreastMNIST...")
+    console.print("\n[bold yellow]Step 1:[/bold yellow] Loading BreastMNIST...")
     from medqcnn.data.loader import get_medmnist_loaders
 
     train_loader, val_loader, test_loader = get_medmnist_loaders(
@@ -57,7 +57,7 @@ def run_demo() -> None:
     console.print(f"  Test samples:  {len(test_loader.dataset)}")
 
     # --- Step 2: Build the model ---
-    console.print(f"\n[bold yellow]Step 2:[/bold yellow] Building HybridQCNN...")
+    console.print("\n[bold yellow]Step 2:[/bold yellow] Building HybridQCNN...")
     model = HybridQCNN(
         n_qubits=n_qubits,
         n_layers=NUM_ANSATZ_LAYERS,
@@ -68,12 +68,12 @@ def run_demo() -> None:
     model.eval()
 
     param_counts = model.count_trainable_params()
-    console.print(f"  [green]Trainable parameters:[/green]")
+    console.print("  [green]Trainable parameters:[/green]")
     for name, count in param_counts.items():
         console.print(f"    {name:>12s}: {count:,}")
 
     # --- Step 3: Run one batch ---
-    console.print(f"\n[bold yellow]Step 3:[/bold yellow] Running forward pass...")
+    console.print("\n[bold yellow]Step 3:[/bold yellow] Running forward pass...")
     images, labels = next(iter(test_loader))
 
     # MedMNIST images are 28x28 — resize to 224x224 for ResNet
@@ -97,7 +97,7 @@ def run_demo() -> None:
     console.print(f"  True labels:   {labels.tolist()}")
 
     # --- Step 4: Verify gradient flow ---
-    console.print(f"\n[bold yellow]Step 4:[/bold yellow] Verifying gradient flow...")
+    console.print("\n[bold yellow]Step 4:[/bold yellow] Verifying gradient flow...")
     model.train()
     images_grad = images_resized[:2].clone().requires_grad_(False)
     labels_grad = labels[:2].long()

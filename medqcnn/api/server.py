@@ -17,7 +17,6 @@ import base64
 import io
 from pathlib import Path
 
-import numpy as np
 import torch
 from litestar import Litestar, get, post
 from litestar.config.cors import CORSConfig
@@ -97,15 +96,51 @@ async def predict(data: PredictionRequest) -> PredictionResponse:
     - Class probabilities
     - Raw quantum expectation values
     """
+    from litestar.exceptions import ClientException
+
     if _model is None:
         load_model()
+
+    # Validate base64 payload size (max 10 MB encoded ~ 7.5 MB image)
+    max_payload_bytes = 10 * 1024 * 1024
+    if len(data.image_base64) > max_payload_bytes:
+        raise ClientException(
+            detail=f"Image payload too large. Max {max_payload_bytes} bytes.",
+            status_code=413,
+        )
 
     # Decode image from base64
     from PIL import Image
     from torchvision import transforms
 
-    image_bytes = base64.b64decode(data.image_base64)
-    image = Image.open(io.BytesIO(image_bytes)).convert("L")  # grayscale
+    try:
+        image_bytes = base64.b64decode(data.image_base64)
+    except Exception:
+        raise ClientException(
+            detail="Invalid base64 encoding.",
+            status_code=400,
+        )
+
+    try:
+        image = Image.open(io.BytesIO(image_bytes))
+    except Exception:
+        raise ClientException(
+            detail="Cannot decode image. Supported formats: PNG, JPEG, BMP.",
+            status_code=400,
+        )
+
+    # Validate image dimensions
+    max_dim = 4096
+    if image.width > max_dim or image.height > max_dim:
+        raise ClientException(
+            detail=(
+                f"Image dimensions too large ({image.width}x{image.height}). "
+                f"Max {max_dim}x{max_dim}."
+            ),
+            status_code=400,
+        )
+
+    image = image.convert("L")  # grayscale
 
     # Preprocess
     transform = transforms.Compose(
