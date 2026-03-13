@@ -136,6 +136,23 @@ bun run dev
 cd frontend && bun run build && bun run start
 ```
 
+## Environment Variables
+
+Copy `.env.example` to `.env` and fill in your values:
+```bash
+cp .env.example .env
+```
+
+Key variables:
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DATABASE_URL` | `sqlite:///medqcnn.db` | PostgreSQL or SQLite connection string |
+| `API_HOST` | `0.0.0.0` | API server bind address |
+| `API_PORT` | `8000` | API server port |
+| `CHECKPOINT_PATH` | — | Path to trained model checkpoint |
+| `N_QUBITS` | `4` | Number of qubits (4 = demo, 8 = production) |
+| `KAFKA_BOOTSTRAP_SERVERS` | `localhost:9092` | Kafka broker address |
+
 ## Docker Deployment
 
 ```bash
@@ -146,6 +163,10 @@ docker compose up -d
 # PostgreSQL at localhost:5432
 # Kafka broker at localhost:9092
 ```
+
+The `.dockerignore` excludes `.venv/`, `node_modules/`, `.git/`, `data/`, and `checkpoints/` from the build context. Data and checkpoints are mounted as Docker volumes instead.
+
+**CI/CD:** The GitHub Actions workflow (`.github/workflows/docker.yml`) automatically builds the Docker image on every push and pushes to DockerHub on main branch. Set `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` as GitHub repository secrets.
 
 ## Database
 

@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] — Docker & CI/CD Improvements
+
+### Added
+- **`.dockerignore`** — Excludes `.venv/` (7.9 GB), `node_modules/`, `.git/`, `data/`, `checkpoints/`, docs, and test caches from Docker build context. Drastically reduces image build time and size.
+- **GitHub Actions Docker workflow** (`.github/workflows/docker.yml`) — Builds Docker image on every push/PR, pushes to DockerHub on main branch and version tags with multi-tag strategy (latest, sha, semver).
+- **`.env.example`** — Documents all environment variables: `DATABASE_URL`, `API_HOST`, `API_PORT`, `CHECKPOINT_PATH`, `N_QUBITS`, Kafka settings, and Docker Compose overrides.
+
+### Changed
+- **Dockerfile** — Replaced `COPY checkpoints/` (fails when dir is empty/excluded) with `RUN mkdir -p checkpoints data logs` for volume mount targets. Added `curl` for health check. Uses `curl -f` instead of Python one-liner for `HEALTHCHECK`. Sets `DATABASE_URL` default to SQLite fallback.
+
 ## [0.2.0] — Phase 5: Interactive Frontend & Database
 
 ### Added — Database Layer (Sprint 5.1)

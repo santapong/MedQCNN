@@ -1,0 +1,69 @@
+# ──────────────────────────────────────────────
+# MedQCNN — Docker Build Context Exclusions
+# Keeps the build context small and the image lean.
+# ──────────────────────────────────────────────
+
+# Python virtual environments
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+
+# Node / Frontend build artifacts
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+
+# Git
+.git/
+.gitignore
+.github/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Test & lint caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# Data & checkpoints (mounted as volumes, not baked in)
+data/
+checkpoints/
+logs/
+
+# Medical image files
+*.nii
+*.nii.gz
+*.dcm
+*.dicom
+
+# Documentation (not needed at runtime)
+docs/
+notebooks/
+*.md
+!README.md
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Misc
+*.db
+*.sqlite3
+.DS_Store
+Thumbs.db
+
+# Docker files (avoid recursive builds)
+Dockerfile
+docker-compose.yml

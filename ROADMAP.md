@@ -22,8 +22,10 @@
   - Dark/light theme toggle
   - Loading skeletons for all data-fetching pages
 - Docker + Kafka + PostgreSQL deployment
-- CI/CD (GitHub Actions: lint + test)
-- 14 unit tests passing
+- `.dockerignore` excluding `.venv`, `node_modules`, and large files from build context
+- CI/CD (GitHub Actions: lint + test + Docker build/push to DockerHub)
+- `.env.example` documenting all environment variables
+- 22 unit tests passing
 
 ---
 
