@@ -1,0 +1,124 @@
+name: Docker Compose Verify
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Dockerfile"
+      - "docker-compose.yml"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "medqcnn/**"
+      - "scripts/**"
+      - ".github/workflows/docker-compose-verify.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "Dockerfile"
+      - "docker-compose.yml"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "medqcnn/**"
+      - "scripts/**"
+      - ".github/workflows/docker-compose-verify.yml"
+
+jobs:
+  docker-compose-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate docker-compose.yml syntax
+        run: docker compose config --quiet
+
+      - name: Build all services
+        run: docker compose build --no-cache
+
+      - name: Start services in detached mode
+        run: docker compose up -d
+
+      - name: Wait for PostgreSQL to be healthy
+        run: |
+          echo "Waiting for PostgreSQL..."
+          for i in $(seq 1 30); do
+            if docker compose exec -T postgres pg_isready -U medqcnn > /dev/null 2>&1; then
+              echo "PostgreSQL is ready"
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "PostgreSQL failed to become ready"
+              docker compose logs postgres
+              exit 1
+            fi
+            sleep 2
+          done
+
+      - name: Wait for Kafka to be healthy
+        run: |
+          echo "Waiting for Kafka..."
+          for i in $(seq 1 30); do
+            if docker compose exec -T kafka kafka-topics.sh --bootstrap-server localhost:9092 --list > /dev/null 2>&1; then
+              echo "Kafka is ready"
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "Kafka failed to become ready"
+              docker compose logs kafka
+              exit 1
+            fi
+            sleep 2
+          done
+
+      - name: Wait for MedQCNN API to be healthy
+        run: |
+          echo "Waiting for MedQCNN API..."
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+              echo "MedQCNN API is healthy"
+              break
+            fi
+            if [ "$i" -eq 30 ]; then
+              echo "MedQCNN API failed health check"
+              docker compose logs medqcnn-api
+              exit 1
+            fi
+            sleep 3
+          done
+
+      - name: Verify API responds correctly
+        run: |
+          echo "=== Health Check ==="
+          curl -sf http://localhost:8000/health | python3 -m json.tool
+
+          echo ""
+          echo "=== Model Info ==="
+          curl -sf http://localhost:8000/info | python3 -m json.tool
+
+      - name: Check all containers are running (no restarts)
+        run: |
+          echo "=== Container Status ==="
+          docker compose ps
+
+          # Fail if any container exited or is restarting
+          if docker compose ps | grep -qE "Exit|Restarting"; then
+            echo "ERROR: Some containers are not healthy"
+            docker compose logs
+            exit 1
+          fi
+
+      - name: Show resource usage
+        if: always()
+        run: docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}" || true
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose logs --tail=100
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker compose down -v --remove-orphans
+          docker system prune -f
