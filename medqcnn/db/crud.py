@@ -64,7 +64,14 @@ def list_predictions(
     if confidence_min is not None:
         q = q.filter(Prediction.confidence >= confidence_min)
     if filename_search:
-        q = q.filter(Prediction.image_filename.ilike(f"%{filename_search}%"))
+        # Escape SQL LIKE wildcards to prevent injection
+        escaped = (
+            filename_search
+            .replace("\\", "\\\\")
+            .replace("%", "\\%")
+            .replace("_", "\\_")
+        )
+        q = q.filter(Prediction.image_filename.ilike(f"%{escaped}%", escape="\\"))
     total = q.count()
     rows = q.order_by(Prediction.created_at.desc()).offset(offset).limit(limit).all()
     return rows, total

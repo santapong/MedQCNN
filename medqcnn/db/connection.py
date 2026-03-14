@@ -8,6 +8,8 @@ Set DATABASE_URL env var for PostgreSQL, otherwise falls back to SQLite.
 from __future__ import annotations
 
 import os
+from collections.abc import Generator
+from contextlib import contextmanager
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -49,6 +51,23 @@ def get_session() -> Session:
     if _SessionFactory is None:
         _SessionFactory = sessionmaker(bind=get_engine())
     return _SessionFactory()
+
+
+@contextmanager
+def db_session() -> Generator[Session, None, None]:
+    """Context manager that initializes the DB and yields a session.
+
+    Usage::
+
+        with db_session() as session:
+            create_prediction(session, ...)
+    """
+    init_db()
+    session = get_session()
+    try:
+        yield session
+    finally:
+        session.close()
 
 
 def reset_engine() -> None:

@@ -3,6 +3,10 @@ Image preprocessing utilities for MedQCNN.
 
 Provides intensity normalization, resizing, slice extraction from 3D volumes,
 and a full preprocessing pipeline for medical images.
+
+Note: These utilities are designed for raw image ingestion paths (DICOM, NIfTI,
+raw numpy arrays) rather than MedMNIST datasets, which use torchvision transforms
+in the data loader. Both paths produce ResNet-compatible 224x224 inputs.
 """
 
 from __future__ import annotations
