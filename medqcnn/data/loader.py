@@ -13,6 +13,7 @@ import medmnist
 from medmnist import INFO
 from torch.utils.data import DataLoader
 from torchvision import transforms
+from torchvision.datasets import ImageFolder
 
 
 def get_medmnist_loaders(
@@ -102,3 +103,85 @@ def get_medmnist_loaders(
     )
 
     return train_loader, val_loader, test_loader
+
+
+def get_custom_loaders(
+    data_dir: str,
+    batch_size: int = 16,
+    num_workers: int = 0,
+    image_size: int = 224,
+) -> tuple[DataLoader, DataLoader, DataLoader, list[str]]:
+    """Load a custom image dataset organized as ImageFolder and return loaders.
+
+    Expects the following directory structure::
+
+        data_dir/
+        ├── train/
+        │   ├── class_a/   (e.g. "healthy/")
+        │   └── class_b/   (e.g. "diseased/")
+        ├── val/
+        │   └── ...
+        └── test/
+            └── ...
+
+    Args:
+        data_dir: Root directory containing train/, val/, test/ subdirectories.
+        batch_size: Batch size for all loaders.
+        num_workers: Number of dataloader worker processes.
+        image_size: Target image size (images are resized to this).
+
+    Returns:
+        Tuple of (train_loader, val_loader, test_loader, label_names).
+        ``label_names`` is a sorted list of class names derived from
+        the subdirectory names in ``train/``.
+
+    Raises:
+        FileNotFoundError: If data_dir or required subdirectories are missing.
+    """
+    root = Path(data_dir).resolve()
+    for split in ("train", "val", "test"):
+        split_dir = root / split
+        if not split_dir.is_dir():
+            msg = (
+                f"Missing '{split}/' directory in {root}. "
+                f"Expected structure: {root}/train/, {root}/val/, {root}/test/"
+            )
+            raise FileNotFoundError(msg)
+
+    transform = transforms.Compose(
+        [
+            transforms.Grayscale(num_output_channels=1),
+            transforms.Resize((image_size, image_size)),
+            transforms.ToTensor(),
+        ]
+    )
+
+    train_dataset = ImageFolder(root=str(root / "train"), transform=transform)
+    val_dataset = ImageFolder(root=str(root / "val"), transform=transform)
+    test_dataset = ImageFolder(root=str(root / "test"), transform=transform)
+
+    label_names: list[str] = list(train_dataset.classes)
+
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=num_workers,
+        drop_last=False,
+    )
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        drop_last=False,
+    )
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        drop_last=False,
+    )
+
+    return train_loader, val_loader, test_loader, label_names

@@ -31,6 +31,7 @@ mcp = FastMCP("MedQCNN")
 # --- Global model state ---
 _model: HybridQCNN | None = None
 _device: torch.device = torch.device("cpu")
+_labels: list[str] = ["Benign", "Malignant"]
 
 
 def _ensure_model(
@@ -39,7 +40,7 @@ def _ensure_model(
     checkpoint_path: str | None = None,
 ) -> HybridQCNN:
     """Lazy-load the model on first use."""
-    global _model, _device
+    global _model, _device, _labels
 
     if _model is not None:
         return _model
@@ -47,16 +48,24 @@ def _ensure_model(
     set_seed()
     _device = get_device()
 
+    # Peek at checkpoint to determine n_classes and labels
+    n_classes = 2
+    ckpt = None
+    if checkpoint_path and Path(checkpoint_path).exists():
+        ckpt = torch.load(checkpoint_path, map_location=_device)
+        if "labels" in ckpt and ckpt["labels"] is not None:
+            _labels = ckpt["labels"]
+            n_classes = len(_labels)
+
     _model = HybridQCNN(
         n_qubits=n_qubits,
         n_layers=n_layers,
-        n_classes=2,
+        n_classes=n_classes,
         pretrained=True,
     ).to(_device)
 
-    if checkpoint_path and Path(checkpoint_path).exists():
-        checkpoint = torch.load(checkpoint_path, map_location=_device)
-        _model.load_state_dict(checkpoint["model_state_dict"])
+    if ckpt is not None:
+        _model.load_state_dict(ckpt["model_state_dict"])
 
     _model.eval()
     return _model
@@ -108,13 +117,15 @@ def diagnose(image_path: str) -> str:
         q_out = model.quantum_layer(z)
         q_values = q_out[0].cpu().tolist()
 
-    labels = ["Benign", "Malignant"]
+    labels = _labels
     result = {
         "prediction": pred,
         "label": labels[pred] if pred < len(labels) else str(pred),
         "confidence": round(confidence, 6),
         "probabilities": {
-            labels[i]: round(p, 6) for i, p in enumerate(probs[0].cpu().tolist())
+            labels[i]: round(p, 6)
+            for i, p in enumerate(probs[0].cpu().tolist())
+            if i < len(labels)
         },
         "quantum_expectation_values": [round(v, 6) for v in q_values],
         "model_config": {
@@ -202,6 +213,13 @@ def list_datasets() -> str:
             "n_classes": 8,
             "task": "multi-class classification",
             "image_size": "28x28",
+        },
+        "custom": {
+            "description": "Custom image dataset in ImageFolder format (train/val/test with class subdirectories)",
+            "n_classes": "auto-detected from directory structure",
+            "task": "classification",
+            "image_size": "user-defined",
+            "usage": "Use --dataset custom --data-dir /path/to/data with the training script",
         },
     }
     return json.dumps(datasets, indent=2)
