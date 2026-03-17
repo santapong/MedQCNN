@@ -45,7 +45,13 @@ def parse_args() -> argparse.Namespace:
         "--dataset",
         type=str,
         default="breastmnist",
-        help="MedMNIST dataset name (default: breastmnist)",
+        help="Dataset name: MedMNIST name or 'custom' (requires --data-dir)",
+    )
+    parser.add_argument(
+        "--data-dir",
+        type=str,
+        default=None,
+        help="Path to custom dataset directory (with train/val/test subdirs)",
     )
     parser.add_argument(
         "--epochs",
@@ -128,21 +134,37 @@ def main() -> None:
 
     # Data
     console.print(f"\n[bold yellow]Loading {args.dataset}...[/bold yellow]")
-    train_loader, val_loader, _ = get_medmnist_loaders(
-        dataset_name=args.dataset,
-        batch_size=args.batch_size,
-        download=True,
-    )
+
+    if args.dataset == "custom":
+        if not args.data_dir:
+            console.print("[bold red]--data-dir is required for custom datasets[/bold red]")
+            sys.exit(1)
+        from medqcnn.data.loader import get_custom_loaders
+
+        train_loader, val_loader, _, label_names = get_custom_loaders(
+            data_dir=args.data_dir,
+            batch_size=args.batch_size,
+        )
+        n_classes = len(label_names)
+        use_resized_loader = False
+    else:
+        train_loader, val_loader, _ = get_medmnist_loaders(
+            dataset_name=args.dataset,
+            batch_size=args.batch_size,
+            download=True,
+        )
+        from medmnist import INFO
+
+        info = INFO[args.dataset]
+        n_classes = len(info["label"])
+        label_names = [info["label"][str(i)] for i in range(n_classes)]
+        use_resized_loader = True
+
     console.print(
         f"  Train: {len(train_loader.dataset)} samples | "
         f"Val: {len(val_loader.dataset)} samples"
     )
-
-    # Determine number of classes from dataset
-    from medmnist import INFO
-
-    info = INFO[args.dataset]
-    n_classes = len(info["label"])
+    console.print(f"  Classes ({n_classes}): {label_names}")
 
     # Model
     console.print("\n[bold yellow]Building HybridQCNN...[/bold yellow]")
@@ -159,29 +181,34 @@ def main() -> None:
         if name != "total":
             console.print(f"    {name:>12s}: {count:,}")
 
-    # Wrap DataLoaders to resize images to 224x224
-    class ResizedLoader:
-        """Wrapper that resizes MedMNIST images to ResNet input size."""
+    # Wrap DataLoaders to resize images to 224x224 (only for MedMNIST 28x28 images)
+    if use_resized_loader:
 
-        def __init__(self, loader):
-            self.loader = loader
-            self.dataset = loader.dataset
+        class ResizedLoader:
+            """Wrapper that resizes MedMNIST images to ResNet input size."""
 
-        def __iter__(self):
-            for images, labels in self.loader:
-                images = torch.nn.functional.interpolate(
-                    images.float(),
-                    size=(224, 224),
-                    mode="bilinear",
-                    align_corners=False,
-                )
-                yield images, labels
+            def __init__(self, loader):
+                self.loader = loader
+                self.dataset = loader.dataset
 
-        def __len__(self):
-            return len(self.loader)
+            def __iter__(self):
+                for images, labels in self.loader:
+                    images = torch.nn.functional.interpolate(
+                        images.float(),
+                        size=(224, 224),
+                        mode="bilinear",
+                        align_corners=False,
+                    )
+                    yield images, labels
 
-    resized_train = ResizedLoader(train_loader)
-    resized_val = ResizedLoader(val_loader)
+            def __len__(self):
+                return len(self.loader)
+
+        resized_train = ResizedLoader(train_loader)
+        resized_val = ResizedLoader(val_loader)
+    else:
+        resized_train = train_loader
+        resized_val = val_loader
 
     # Train
     console.rule("[bold yellow]Training[/bold yellow]")
@@ -195,6 +222,7 @@ def main() -> None:
         n_qubits=args.n_qubits,
         n_layers=args.n_layers,
         batch_size=args.batch_size,
+        labels=label_names,
     )
 
     # Resume from checkpoint if specified

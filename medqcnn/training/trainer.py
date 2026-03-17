@@ -48,6 +48,7 @@ class Trainer:
         n_qubits: Number of qubits in the quantum layer.
         n_layers: Number of ansatz layers.
         batch_size: Training batch size.
+        labels: Human-readable class names (saved in checkpoints for inference).
     """
 
     def __init__(
@@ -62,6 +63,7 @@ class Trainer:
         n_qubits: int = 8,
         n_layers: int = 4,
         batch_size: int = 16,
+        labels: list[str] | None = None,
     ) -> None:
         self.model = model.to(device)
         self.train_loader = train_loader
@@ -76,6 +78,7 @@ class Trainer:
         self.n_layers = n_layers
         self.learning_rate = learning_rate
         self.batch_size = batch_size
+        self.labels = labels
 
         self.optimizer = torch.optim.Adam(
             filter(lambda p: p.requires_grad, model.parameters()),
@@ -324,6 +327,7 @@ class Trainer:
                 "optimizer_state_dict": self.optimizer.state_dict(),
                 "scheduler_state_dict": self.scheduler.state_dict(),
                 "history": self.history,
+                "labels": self.labels,
             },
             path,
         )
@@ -336,4 +340,5 @@ class Trainer:
         if "scheduler_state_dict" in checkpoint:
             self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
         self.history = checkpoint.get("history", self.history)
+        self.labels = checkpoint.get("labels", self.labels)
         return checkpoint["epoch"]

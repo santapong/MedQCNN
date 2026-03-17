@@ -51,6 +51,18 @@ class ModelService:
 
         if checkpoint_path and Path(checkpoint_path).exists():
             checkpoint = torch.load(checkpoint_path, map_location=self.device)
+            # Load dynamic labels from checkpoint (fallback to default)
+            if "labels" in checkpoint and checkpoint["labels"] is not None:
+                self.labels = checkpoint["labels"]
+                # Rebuild model if n_classes differs from checkpoint labels
+                if n_classes != len(self.labels):
+                    n_classes = len(self.labels)
+                    self.model = HybridQCNN(
+                        n_qubits=n_qubits,
+                        n_layers=n_layers,
+                        n_classes=n_classes,
+                        pretrained=True,
+                    ).to(self.device)
             self.model.load_state_dict(checkpoint["model_state_dict"])
 
         self.model.eval()

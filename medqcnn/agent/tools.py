@@ -26,6 +26,7 @@ from medqcnn.utils.device import get_device, set_seed
 # --- Lazy model singleton ---
 _model: HybridQCNN | None = None
 _device: torch.device = torch.device("cpu")
+_labels: list[str] = ["Benign", "Malignant"]
 
 
 def _get_model(
@@ -34,22 +35,30 @@ def _get_model(
     checkpoint: str | None = None,
 ) -> HybridQCNN:
     """Lazy-load the HybridQCNN model."""
-    global _model, _device
+    global _model, _device, _labels
 
     if _model is not None:
         return _model
 
     set_seed()
     _device = get_device()
+
+    # Peek at checkpoint to determine n_classes and labels
+    n_classes = 2
+    if checkpoint and Path(checkpoint).exists():
+        ckpt = torch.load(checkpoint, map_location=_device)
+        if "labels" in ckpt and ckpt["labels"] is not None:
+            _labels = ckpt["labels"]
+            n_classes = len(_labels)
+
     _model = HybridQCNN(
         n_qubits=n_qubits,
         n_layers=n_layers,
-        n_classes=2,
+        n_classes=n_classes,
         pretrained=True,
     ).to(_device)
 
     if checkpoint and Path(checkpoint).exists():
-        ckpt = torch.load(checkpoint, map_location=_device)
         _model.load_state_dict(ckpt["model_state_dict"])
 
     _model.eval()
@@ -105,15 +114,15 @@ def quantum_diagnose(image_path: str) -> str:
         q_out = model.quantum_layer(z)
         q_values = q_out[0].cpu().tolist()
 
-    labels = ["Benign", "Malignant"]
+    labels = _labels
     return json.dumps(
         {
-            "prediction": labels[pred],
+            "prediction": labels[pred] if pred < len(labels) else str(pred),
             "prediction_code": pred,
             "confidence": round(confidence, 4),
             "probabilities": {
-                "Benign": round(probs[0, 0].item(), 4),
-                "Malignant": round(probs[0, 1].item(), 4),
+                labels[i]: round(probs[0, i].item(), 4)
+                for i in range(min(len(labels), probs.shape[1]))
             },
             "quantum_expectation_values": [round(v, 4) for v in q_values],
             "model": {
@@ -197,6 +206,12 @@ def list_medical_datasets() -> str:
                 "description": "Abdominal CT organ scans (axial)",
                 "n_classes": 11,
                 "clinical_use": "Organ identification in CT scans",
+            },
+            "custom": {
+                "description": "Custom image dataset in ImageFolder format",
+                "n_classes": "auto-detected from directory structure",
+                "clinical_use": "User-defined",
+                "usage": "Use --dataset custom --data-dir /path/to/data with the training script",
             },
         },
         indent=2,
