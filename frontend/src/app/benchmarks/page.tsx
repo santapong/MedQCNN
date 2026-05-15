@@ -3,28 +3,36 @@
 import { useEffect, useState } from "react";
 import {
   fetchBenchmarks,
+  fetchNoiseSensitivity,
   fetchTrainingRuns,
   type BenchmarkMetric,
+  type NoiseSensitivityPoint,
   type TrainingRun,
 } from "@/lib/api";
 import { CardSkeleton } from "@/components/Skeleton";
 import BenchmarkCharts from "@/components/BenchmarkCharts";
+import NoiseSensitivityChart from "@/components/NoiseSensitivityChart";
+
+const NOISE_METRIC = "noise_eval_val_acc";
 
 export default function BenchmarksPage() {
   const [runs, setRuns] = useState<TrainingRun[]>([]);
   const [benchmarks, setBenchmarks] = useState<BenchmarkMetric[]>([]);
+  const [noisePoints, setNoisePoints] = useState<NoiseSensitivityPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
       try {
-        const [runsRes, benchRes] = await Promise.all([
+        const [runsRes, benchRes, noiseRes] = await Promise.all([
           fetchTrainingRuns({ limit: 50 }),
           fetchBenchmarks({ limit: 500 }),
+          fetchNoiseSensitivity({ metric_name: NOISE_METRIC }),
         ]);
         setRuns(runsRes.items);
         setBenchmarks(benchRes.items);
+        setNoisePoints(noiseRes.points);
       } catch (err) {
         setError(
           err instanceof Error ? err.message : "Failed to load benchmarks"
@@ -137,6 +145,12 @@ export default function BenchmarksPage() {
             runs={runs}
             benchmarks={benchmarks}
             referenceData={referenceData}
+          />
+
+          {/* Noise sensitivity (accuracy vs depolarising rate) */}
+          <NoiseSensitivityChart
+            points={noisePoints}
+            metricName={NOISE_METRIC}
           />
 
           {/* Benchmark metrics from DB */}
