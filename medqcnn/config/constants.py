@@ -25,6 +25,10 @@ DEMO_QUBITS: int = 4
 """Reduced qubit count for fast demos and testing. Produces a
 16-dimensional latent space (2^4 = 16) instead of 256."""
 
+NUM_SHOTS_NOISY: int = 1024
+"""Default measurement shots when running on a noisy Aer device.
+Ignored on `default.qubit` (state-vector, exact expectation)."""
+
 # ──────────────────────────────────────────────
 # Classical Vision Settings
 # ──────────────────────────────────────────────

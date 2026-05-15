@@ -29,6 +29,7 @@ from medqcnn.config.constants import (
 )
 from medqcnn.data.loader import get_medmnist_loaders
 from medqcnn.model.hybrid import HybridQCNN
+from medqcnn.quantum.noise import NOISE_PRESETS, get_preset
 from medqcnn.training.trainer import Trainer
 from medqcnn.utils.device import get_device, get_memory_info, set_seed
 from medqcnn.utils.logging import console, setup_logger
@@ -107,6 +108,16 @@ def parse_args() -> argparse.Namespace:
         default=42,
         help="Random seed (default: 42)",
     )
+    parser.add_argument(
+        "--noise",
+        type=str,
+        default="none",
+        choices=sorted(NOISE_PRESETS),
+        help=(
+            "Aer noise preset for the quantum layer "
+            f"(default: none). Choices: {sorted(NOISE_PRESETS)}."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -122,6 +133,14 @@ def main() -> None:
     console.print(f"  Qubits:        {args.n_qubits}")
     console.print(f"  Ansatz layers: {args.n_layers}")
     console.print(f"  Latent dim:    {2**args.n_qubits}")
+    console.print(f"  Noise preset:  {args.noise}")
+
+    noise_config = get_preset(args.noise)
+    if not noise_config.is_noiseless:
+        console.print(
+            f"  Noise rates:   depolarising={noise_config.depolarising_p}, "
+            f"readout={noise_config.readout_p}"
+        )
 
     # Setup
     set_seed(args.seed)
@@ -137,7 +156,9 @@ def main() -> None:
 
     if args.dataset == "custom":
         if not args.data_dir:
-            console.print("[bold red]--data-dir is required for custom datasets[/bold red]")
+            console.print(
+                "[bold red]--data-dir is required for custom datasets[/bold red]"
+            )
             sys.exit(1)
         from medqcnn.data.loader import get_custom_loaders
 
@@ -173,6 +194,7 @@ def main() -> None:
         n_layers=args.n_layers,
         n_classes=n_classes,
         pretrained=True,
+        noise_config=noise_config if not noise_config.is_noiseless else None,
     )
 
     param_counts = model.count_trainable_params()
@@ -223,6 +245,7 @@ def main() -> None:
         n_layers=args.n_layers,
         batch_size=args.batch_size,
         labels=label_names,
+        noise_config=noise_config if not noise_config.is_noiseless else None,
     )
 
     # Resume from checkpoint if specified
@@ -231,7 +254,9 @@ def main() -> None:
         resume_path = Path(args.resume)
         if resume_path.exists():
             resume_from = trainer.load_checkpoint(resume_path)
-            console.print(f"  Resumed from checkpoint: {args.resume} (epoch {resume_from})")
+            console.print(
+                f"  Resumed from checkpoint: {args.resume} (epoch {resume_from})"
+            )
         else:
             console.print(f"[bold red]Checkpoint not found: {args.resume}[/bold red]")
             sys.exit(1)

@@ -10,6 +10,12 @@ Sprint 2 upgrade: Now supports `qml.qnn.TorchLayer` integration
 for native PyTorch autograd through quantum parameters. This
 replaces the manual .detach().numpy() approach that broke gradient
 backpropagation.
+
+Noise harness (Phase 7): each factory accepts an optional
+`noise_config: NoiseConfig`. When set, the device switches to
+`qiskit.aer` with the corresponding noise model and finite shots,
+and the differentiation method falls back to parameter-shift —
+the only PennyLane diff method compatible with sampling devices.
 """
 
 from __future__ import annotations
@@ -17,9 +23,35 @@ from __future__ import annotations
 import pennylane as qml
 from pennylane import numpy as pnp
 
-from medqcnn.config.constants import NUM_ANSATZ_LAYERS, NUM_QUBITS
+from medqcnn.config.constants import NUM_ANSATZ_LAYERS, NUM_QUBITS, NUM_SHOTS_NOISY
 from medqcnn.quantum.ansatz import get_param_shape, hardware_efficient_ansatz
 from medqcnn.quantum.encoding import amplitude_encode
+from medqcnn.quantum.noise import NoiseConfig, build_noise_model
+
+
+def _build_device(
+    n_qubits: int,
+    noise_config: NoiseConfig | None,
+    device_name: str,
+    shots: int | None,
+):
+    """Construct the PennyLane device, routing through Aer when noisy.
+
+    Returns a tuple ``(device, effective_diff_method_override)`` where
+    the override is ``"parameter-shift"`` when the device is noisy
+    (sampling), else ``None`` (caller keeps its requested diff method).
+    """
+    if noise_config is None or noise_config.is_noiseless:
+        return qml.device(device_name, wires=n_qubits), None
+
+    noise_model = build_noise_model(noise_config)
+    aer_device = qml.device(
+        "qiskit.aer",
+        wires=n_qubits,
+        shots=shots if shots is not None else NUM_SHOTS_NOISY,
+        noise_model=noise_model,
+    )
+    return aer_device, "parameter-shift"
 
 
 def create_qnode(
@@ -27,6 +59,8 @@ def create_qnode(
     n_layers: int = NUM_ANSATZ_LAYERS,
     diff_method: str = "parameter-shift",
     device_name: str = "default.qubit",
+    noise_config: NoiseConfig | None = None,
+    shots: int | None = None,
 ) -> qml.QNode:
     """Create and return a PennyLane QNode for the hybrid model.
 
@@ -40,26 +74,23 @@ def create_qnode(
         n_layers: Number of ansatz layers.
         diff_method: Differentiation method for gradient computation.
             "parameter-shift" is hardware-compatible (NISQ-ready).
-        device_name: PennyLane device backend.
+            Forced to "parameter-shift" when `noise_config` is set.
+        device_name: PennyLane device backend (ignored when noisy).
+        noise_config: Optional Aer noise model. When provided and
+            non-trivial, the device becomes `qiskit.aer` with finite
+            shots and the supplied noise model.
+        shots: Measurement shots used by the noisy device. Ignored
+            when `noise_config` is None / noiseless.
 
     Returns:
         A QNode callable: (features, params) → scalar expectation value.
     """
-    dev = qml.device(device_name, wires=n_qubits)
+    dev, diff_override = _build_device(n_qubits, noise_config, device_name, shots)
+    effective_diff = diff_override or diff_method
     wires = range(n_qubits)
 
-    @qml.qnode(dev, diff_method=diff_method)
+    @qml.qnode(dev, diff_method=effective_diff)
     def circuit(features: pnp.ndarray, params: pnp.ndarray) -> float:
-        """Quantum circuit: encode → ansatz → measure.
-
-        Args:
-            features: L2-normalized latent vector, shape (2^n_qubits,).
-            params: Variational parameters, shape (n_layers, n_qubits, 2).
-
-        Returns:
-            Scalar expectation value in [-1, 1] representing the
-            averaged local Pauli-Z measurement.
-        """
         amplitude_encode(features, wires=wires)
         hardware_efficient_ansatz(params, wires=wires, n_layers=n_layers)
 
@@ -77,52 +108,35 @@ def create_torch_qnode(
     n_qubits: int = NUM_QUBITS,
     n_layers: int = NUM_ANSATZ_LAYERS,
     device_name: str = "default.qubit",
+    noise_config: NoiseConfig | None = None,
+    shots: int | None = None,
 ) -> tuple[qml.QNode, dict[str, tuple[int, ...]]]:
     """Create a QNode compatible with PennyLane's TorchLayer.
 
-    This is the Sprint 2 upgrade that enables native PyTorch autograd
-    through the quantum circuit. The circuit uses `interface='torch'`
-    and `diff_method='backprop'` for efficient gradient computation
-    on simulators.
-
-    The circuit signature is designed for TorchLayer:
-      - `inputs`: the classical features (data-dependent, not trained)
-      - `weights`: the variational parameters (trained via autograd)
+    On `default.qubit` (no noise) the QNode uses backprop. With a
+    noise model the QNode switches to the Aer sampling device and
+    parameter-shift gradients — backprop is not defined for
+    sampling-based devices.
 
     Args:
         n_qubits: Number of qubits.
         n_layers: Number of ansatz layers.
-        device_name: PennyLane device backend.
+        device_name: PennyLane device backend (ignored when noisy).
+        noise_config: Optional Aer noise model.
+        shots: Measurement shots when noisy.
 
     Returns:
         Tuple of (qnode, weight_shapes) where weight_shapes maps
         parameter names to their shapes for TorchLayer initialization.
     """
-    dev = qml.device(device_name, wires=n_qubits)
+    dev, diff_override = _build_device(n_qubits, noise_config, device_name, shots)
+    effective_diff = diff_override or "backprop"
     wires = range(n_qubits)
 
-    @qml.qnode(dev, interface="torch", diff_method="backprop")
+    @qml.qnode(dev, interface="torch", diff_method=effective_diff)
     def circuit(inputs, weights):
-        """TorchLayer-compatible quantum circuit.
-
-        Args:
-            inputs: L2-normalized latent vector, shape (2^n_qubits,).
-                This is the data input — not a trainable parameter.
-            weights: Variational parameters, shape (n_layers, n_qubits, 2).
-                These are the trainable quantum weights.
-
-        Returns:
-            List of expectation values, one per qubit.
-        """
-        # Step 1: Encode classical data into quantum state
         amplitude_encode(inputs, wires=wires)
-
-        # Step 2: Apply variational ansatz
         hardware_efficient_ansatz(weights, wires=wires, n_layers=n_layers)
-
-        # Step 3: Return per-qubit Pauli-Z expectations
-        # Returning n_qubits values gives the classifier richer features
-        # than a single averaged scalar.
         return [qml.expval(qml.PauliZ(w)) for w in wires]
 
     weight_shapes = {"weights": get_param_shape(n_layers, n_qubits)}
@@ -134,16 +148,17 @@ def create_quantum_layer(
     n_qubits: int = NUM_QUBITS,
     n_layers: int = NUM_ANSATZ_LAYERS,
     device_name: str = "default.qubit",
+    noise_config: NoiseConfig | None = None,
+    shots: int | None = None,
 ):
     """Create a PennyLane TorchLayer wrapping the quantum circuit.
-
-    This is the simplest API — returns a PyTorch-native nn.Module
-    that can be dropped into any Sequential or forward() method.
 
     Args:
         n_qubits: Number of qubits.
         n_layers: Number of ansatz layers.
-        device_name: PennyLane device backend.
+        device_name: PennyLane device backend (ignored when noisy).
+        noise_config: Optional Aer noise model. See `create_torch_qnode`.
+        shots: Measurement shots when noisy.
 
     Returns:
         A `qml.qnn.TorchLayer` instance (subclass of nn.Module).
@@ -152,6 +167,8 @@ def create_quantum_layer(
         n_qubits=n_qubits,
         n_layers=n_layers,
         device_name=device_name,
+        noise_config=noise_config,
+        shots=shots,
     )
 
     return qml.qnn.TorchLayer(qnode, weight_shapes)

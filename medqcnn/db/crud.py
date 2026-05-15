@@ -66,8 +66,7 @@ def list_predictions(
     if filename_search:
         # Escape SQL LIKE wildcards to prevent injection
         escaped = (
-            filename_search
-            .replace("\\", "\\\\")
+            filename_search.replace("\\", "\\\\")
             .replace("%", "\\%")
             .replace("_", "\\_")
         )
@@ -102,6 +101,7 @@ def create_training_run(
     duration_seconds: float | None = None,
     checkpoint_path: str | None = None,
     history: dict[str, list[float]] | None = None,
+    noise_config: dict[str, float] | None = None,
 ) -> TrainingRun:
     """Insert a new training run."""
     row = TrainingRun(
@@ -119,6 +119,7 @@ def create_training_run(
         duration_seconds=duration_seconds,
         checkpoint_path=checkpoint_path,
         history_json=json.dumps(history) if history else None,
+        noise_config_json=json.dumps(noise_config) if noise_config else None,
     )
     session.add(row)
     session.commit()

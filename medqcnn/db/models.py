@@ -88,6 +88,7 @@ class TrainingRun(Base):
     duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
     checkpoint_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
     history_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    noise_config_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -101,6 +102,12 @@ class TrainingRun(Base):
         if self.history_json is None:
             return None
         return json.loads(self.history_json)
+
+    @property
+    def noise_config(self) -> dict[str, float] | None:
+        if self.noise_config_json is None:
+            return None
+        return json.loads(self.noise_config_json)
 
     def to_dict(self) -> dict:
         return {
@@ -119,6 +126,7 @@ class TrainingRun(Base):
             "duration_seconds": self.duration_seconds,
             "checkpoint_path": self.checkpoint_path,
             "history": self.history,
+            "noise_config": self.noise_config,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "benchmarks": [b.to_dict() for b in self.benchmarks],
         }

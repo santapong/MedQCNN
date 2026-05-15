@@ -29,6 +29,7 @@ from medqcnn.config.constants import (
     DEFAULT_EPOCHS,
     DEFAULT_LEARNING_RATE,
 )
+from medqcnn.quantum.noise import NoiseConfig
 from medqcnn.training.loss import HybridLoss
 
 logger = logging.getLogger("medqcnn.training")
@@ -49,6 +50,9 @@ class Trainer:
         n_layers: Number of ansatz layers.
         batch_size: Training batch size.
         labels: Human-readable class names (saved in checkpoints for inference).
+        noise_config: Optional Aer noise spec recorded with the run for
+            reproducibility. The actual noise injection happens when the
+            model's quantum layer is built; the trainer only persists it.
     """
 
     def __init__(
@@ -64,6 +68,7 @@ class Trainer:
         n_layers: int = 4,
         batch_size: int = 16,
         labels: list[str] | None = None,
+        noise_config: NoiseConfig | None = None,
     ) -> None:
         self.model = model.to(device)
         self.train_loader = train_loader
@@ -79,6 +84,7 @@ class Trainer:
         self.learning_rate = learning_rate
         self.batch_size = batch_size
         self.labels = labels
+        self.noise_config = noise_config
 
         self.optimizer = torch.optim.Adam(
             filter(lambda p: p.requires_grad, model.parameters()),
@@ -121,8 +127,11 @@ class Trainer:
             quantum_params = None
             if hasattr(self.model, "quantum_layer"):
                 quantum_params = torch.cat(
-                    [p.flatten() for p in self.model.quantum_layer.parameters()
-                     if p.requires_grad]
+                    [
+                        p.flatten()
+                        for p in self.model.quantum_layer.parameters()
+                        if p.requires_grad
+                    ]
                 )
 
             loss = self.criterion(logits, labels, quantum_params=quantum_params)
@@ -285,6 +294,9 @@ class Trainer:
                     duration_seconds=duration_seconds,
                     checkpoint_path=str(self.checkpoint_dir / "model_final.pt"),
                     history=self.history,
+                    noise_config=self.noise_config.to_dict()
+                    if self.noise_config is not None
+                    else None,
                 )
 
                 # Store key metrics as benchmarks

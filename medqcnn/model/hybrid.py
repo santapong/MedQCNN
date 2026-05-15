@@ -25,6 +25,7 @@ from medqcnn.config.constants import (
     NUM_ANSATZ_LAYERS,
     NUM_QUBITS,
 )
+from medqcnn.quantum.noise import NoiseConfig
 from medqcnn.quantum.qnode import create_quantum_layer
 
 
@@ -47,6 +48,10 @@ class HybridQCNN(nn.Module):
         n_classes: Number of output classes (2 for binary classification).
         backbone_name: Pre-trained backbone architecture name.
         pretrained: Whether to load pre-trained backbone weights.
+        noise_config: Optional Aer noise model. When provided and
+            non-trivial, the quantum layer runs on `qiskit.aer` with
+            the noise model and parameter-shift gradients (slower but
+            NISQ-credible).
     """
 
     def __init__(
@@ -56,11 +61,13 @@ class HybridQCNN(nn.Module):
         n_classes: int = 2,
         backbone_name: str = BACKBONE_NAME,
         pretrained: bool = True,
+        noise_config: NoiseConfig | None = None,
     ) -> None:
         super().__init__()
 
         self.n_qubits = n_qubits
         self.n_layers = n_layers
+        self.noise_config = noise_config
         latent_dim = 2**n_qubits
 
         # --- Classical components (Node A) ---
@@ -80,6 +87,7 @@ class HybridQCNN(nn.Module):
         self.quantum_layer = create_quantum_layer(
             n_qubits=n_qubits,
             n_layers=n_layers,
+            noise_config=noise_config,
         )
 
         # --- Classification head ---
