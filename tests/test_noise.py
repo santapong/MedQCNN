@@ -68,3 +68,100 @@ class TestNoisyQNode:
 
         result = float(qnode(features, params))
         assert -1.0 <= result <= 1.0
+
+
+class TestNoiseAsRegulariser:
+    """Idea 2: HybridQCNN can train noisy and eval clean."""
+
+    def test_eval_layer_only_built_when_configs_differ(self):
+        from medqcnn.model.hybrid import HybridQCNN
+
+        # Same train + eval noise (none): no separate eval layer.
+        m_same = HybridQCNN(n_qubits=4, n_layers=2, n_classes=2, pretrained=False)
+        assert m_same._eval_quantum_layer is None
+
+        # Different specs (clean eval, no Aer needed): separate eval layer.
+        m_diff = HybridQCNN(
+            n_qubits=4,
+            n_layers=2,
+            n_classes=2,
+            pretrained=False,
+            noise_config=None,
+            eval_noise_config=NoiseConfig(0.0, 0.0),
+        )
+        # Both noiseless → still considered the same effective config.
+        assert m_diff._eval_quantum_layer is None
+
+    def test_eval_layer_params_frozen(self):
+        pytest.importorskip("qiskit_aer")
+        from medqcnn.model.hybrid import HybridQCNN
+
+        model = HybridQCNN(
+            n_qubits=4,
+            n_layers=2,
+            n_classes=2,
+            pretrained=False,
+            noise_config=NOISE_PRESETS["low"],
+            eval_noise_config=NoiseConfig(0.0, 0.0),
+        )
+        assert model._eval_quantum_layer is not None
+        for p in model._eval_quantum_layer.parameters():
+            assert not p.requires_grad
+
+    def test_sync_eval_weights_copies_from_train_layer(self):
+        pytest.importorskip("qiskit_aer")
+        import torch
+
+        from medqcnn.model.hybrid import HybridQCNN
+
+        model = HybridQCNN(
+            n_qubits=4,
+            n_layers=2,
+            n_classes=2,
+            pretrained=False,
+            noise_config=NOISE_PRESETS["low"],
+            eval_noise_config=NoiseConfig(0.0, 0.0),
+        )
+        # Mutate the trainable weights, then sync.
+        with torch.no_grad():
+            model.quantum_layer.weights.fill_(0.5)
+        model._sync_eval_weights()
+        assert torch.allclose(
+            model._eval_quantum_layer.weights,
+            model.quantum_layer.weights,
+        )
+
+
+class TestGradientVariance:
+    """Per-ansatz-layer gradient variance helper."""
+
+    def test_returns_nan_when_no_grad(self):
+        from medqcnn.quantum.qnode import create_quantum_layer
+        from medqcnn.training.metrics import compute_quantum_gradient_variance
+
+        layer = create_quantum_layer(n_qubits=4, n_layers=2)
+        variances = compute_quantum_gradient_variance(layer, n_layers=2, n_qubits=4)
+        assert variances == [float("nan"), float("nan")] or all(
+            v != v for v in variances
+        )
+
+    def test_returns_one_value_per_layer(self):
+        import torch
+
+        from medqcnn.quantum.qnode import create_quantum_layer
+        from medqcnn.training.metrics import compute_quantum_gradient_variance
+
+        n_qubits, n_layers = 4, 3
+        layer = create_quantum_layer(n_qubits=n_qubits, n_layers=n_layers)
+
+        z = torch.rand(2, 2**n_qubits)
+        z = z / z.norm(dim=1, keepdim=True)
+        out = layer(z).sum()
+        out.backward()
+
+        variances = compute_quantum_gradient_variance(
+            layer, n_layers=n_layers, n_qubits=n_qubits
+        )
+        assert len(variances) == n_layers
+        # At least one layer should have a real (non-NaN) variance.
+        assert any(v == v for v in variances)

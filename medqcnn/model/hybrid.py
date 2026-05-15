@@ -52,6 +52,13 @@ class HybridQCNN(nn.Module):
             non-trivial, the quantum layer runs on `qiskit.aer` with
             the noise model and parameter-shift gradients (slower but
             NISQ-credible).
+        eval_noise_config: Optional separate noise model used only when
+            the module is in `eval()` mode. Enables the "noise as
+            regulariser" pattern (arXiv:2601.13275): train with
+            depolarising noise injected, evaluate on a clean circuit.
+            When set, a second TorchLayer is constructed with
+            ``requires_grad=False`` parameters and the trainable
+            weights are copied across just before each eval forward.
     """
 
     def __init__(
@@ -62,12 +69,14 @@ class HybridQCNN(nn.Module):
         backbone_name: str = BACKBONE_NAME,
         pretrained: bool = True,
         noise_config: NoiseConfig | None = None,
+        eval_noise_config: NoiseConfig | None = None,
     ) -> None:
         super().__init__()
 
         self.n_qubits = n_qubits
         self.n_layers = n_layers
         self.noise_config = noise_config
+        self.eval_noise_config = eval_noise_config
         latent_dim = 2**n_qubits
 
         # --- Classical components (Node A) ---
@@ -90,6 +99,19 @@ class HybridQCNN(nn.Module):
             noise_config=noise_config,
         )
 
+        # Optional second layer used only at eval time. Its parameters
+        # are frozen; we copy weights from `quantum_layer` before each
+        # eval forward so the optimizer never sees a stale copy.
+        self._eval_quantum_layer: nn.Module | None = None
+        if self._needs_separate_eval_layer():
+            self._eval_quantum_layer = create_quantum_layer(
+                n_qubits=n_qubits,
+                n_layers=n_layers,
+                noise_config=eval_noise_config,
+            )
+            for p in self._eval_quantum_layer.parameters():
+                p.requires_grad = False
+
         # --- Classification head ---
         # Input: n_qubits expectation values from quantum layer
         # Output: class logits
@@ -100,12 +122,35 @@ class HybridQCNN(nn.Module):
             nn.Linear(32, n_classes),
         )
 
+    def _needs_separate_eval_layer(self) -> bool:
+        """True when train and eval noise specs differ meaningfully."""
+        if self.eval_noise_config is None:
+            return False
+        train_noiseless = self.noise_config is None or self.noise_config.is_noiseless
+        eval_noiseless = self.eval_noise_config.is_noiseless
+        if train_noiseless and eval_noiseless:
+            return False
+        return self.noise_config != self.eval_noise_config
+
+    def _sync_eval_weights(self) -> None:
+        """Copy trainable quantum weights into the frozen eval layer."""
+        if self._eval_quantum_layer is None:
+            return
+        with torch.no_grad():
+            self._eval_quantum_layer.weights.copy_(self.quantum_layer.weights)
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass through the full hybrid pipeline.
 
         The entire pipeline is differentiable — gradients propagate
         from the loss through the classifier, quantum layer, and
         projector. Only the ResNet backbone is frozen.
+
+        When `eval_noise_config` is set and the module is in
+        ``eval()`` mode, the frozen eval-layer (with its own
+        noise model) runs instead of the trainable layer. Weights
+        are synced from the trainable layer immediately before the
+        forward, so eval always reflects the latest training step.
 
         Args:
             x: Input image batch of shape (B, C, H, W).
@@ -120,9 +165,11 @@ class HybridQCNN(nn.Module):
         z = self.projector(features)  # (B, 2^n_qubits), L2-normalized
 
         # Step 3: Quantum circuit evaluation via TorchLayer
-        # TorchLayer processes each sample in the batch automatically.
-        # Input: (B, 2^n_qubits) → Output: (B, n_qubits)
-        q_out = self.quantum_layer(z)  # (B, n_qubits)
+        if self._eval_quantum_layer is not None and not self.training:
+            self._sync_eval_weights()
+            q_out = self._eval_quantum_layer(z)
+        else:
+            q_out = self.quantum_layer(z)
 
         # Step 4: Classification head
         logits = self.classifier(q_out)  # (B, n_classes)
