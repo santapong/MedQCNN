@@ -96,6 +96,8 @@ export interface BenchmarkMetric {
   training_run_id: number;
   metric_name: string;
   metric_value: number;
+  depolarising_p?: number | null;
+  readout_p?: number | null;
   created_at: string | null;
 }
 
@@ -104,6 +106,16 @@ export interface BenchmarkListResponse {
   total: number;
   offset: number;
   limit: number;
+}
+
+export interface NoiseSensitivityPoint extends BenchmarkMetric {
+  depolarising_p: number;
+  readout_p: number | null;
+}
+
+export interface NoiseSensitivityResponse {
+  metric_name: string;
+  points: NoiseSensitivityPoint[];
 }
 
 // ── API Functions ───────────────────────────────────────
@@ -214,6 +226,25 @@ export async function fetchBenchmarks(params?: {
   const qs = searchParams.toString();
   const res = await fetch(`${API_BASE}/benchmarks${qs ? `?${qs}` : ""}`);
   if (!res.ok) throw new Error(`Failed to fetch benchmarks: ${res.status}`);
+  return res.json();
+}
+
+export async function fetchNoiseSensitivity(params?: {
+  training_run_id?: number;
+  metric_name?: string;
+}): Promise<NoiseSensitivityResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.training_run_id)
+    searchParams.set("training_run_id", String(params.training_run_id));
+  if (params?.metric_name)
+    searchParams.set("metric_name", params.metric_name);
+
+  const qs = searchParams.toString();
+  const res = await fetch(
+    `${API_BASE}/benchmarks/noise-sensitivity${qs ? `?${qs}` : ""}`
+  );
+  if (!res.ok)
+    throw new Error(`Failed to fetch noise sensitivity: ${res.status}`);
   return res.json();
 }
 
