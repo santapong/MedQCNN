@@ -16,6 +16,7 @@ from medqcnn.db.crud import (
     create_training_run,
     get_prediction,
     list_benchmarks,
+    list_noise_sensitivity,
     list_predictions,
     list_training_runs,
 )
@@ -187,5 +188,43 @@ class TestBenchmarks:
             )
             rows, total = list_benchmarks(session, training_run_id=run.id)
             assert total == 2
+        finally:
+            session.close()
+
+    def test_noise_sensitivity_filter(self):
+        """Noise-annotated benchmarks are isolated by list_noise_sensitivity."""
+        session = get_session()
+        try:
+            run = create_training_run(
+                session,
+                dataset="breastmnist",
+                n_qubits=4,
+                n_layers=4,
+                epochs=10,
+                learning_rate=0.001,
+                batch_size=16,
+            )
+            # Standard (no noise) benchmark — must be excluded.
+            create_benchmark(
+                session,
+                training_run_id=run.id,
+                metric_name="params_total",
+                metric_value=1024.0,
+            )
+            # Three noise-sensitivity points.
+            for depol_p, acc in ((0.0, 0.88), (0.005, 0.81), (0.01, 0.74)):
+                create_benchmark(
+                    session,
+                    training_run_id=run.id,
+                    metric_name="noise_eval_val_acc",
+                    metric_value=acc,
+                    depolarising_p=depol_p,
+                    readout_p=0.01,
+                )
+
+            points = list_noise_sensitivity(session, training_run_id=run.id)
+            assert len(points) == 3
+            assert [p.depolarising_p for p in points] == [0.0, 0.005, 0.01]
+            assert all(p.metric_name == "noise_eval_val_acc" for p in points)
         finally:
             session.close()

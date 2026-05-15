@@ -43,6 +43,7 @@ from medqcnn.api.schemas import (
     ModelInfoResponse,
     ModelListResponse,
     ModelVersionInfo,
+    NoiseSensitivityResponse,
     PaginatedPredictions,
     PredictionDetail,
     PredictionRequest,
@@ -140,9 +141,7 @@ async def predict(data: PredictionRequest) -> PredictionResponse:
                 quantum_expectation_values=result.quantum_expectation_values,
                 image_hash=image_hash,
                 n_qubits=(
-                    model_service.model.n_qubits
-                    if model_service.model
-                    else DEMO_QUBITS
+                    model_service.model.n_qubits if model_service.model else DEMO_QUBITS
                 ),
             )
     except SQLAlchemyError:
@@ -199,10 +198,10 @@ async def predict_batch(data: BatchPredictionRequest) -> BatchPredictionResponse
                     quantum_expectation_values=result.quantum_expectation_values,
                     image_filename=f"batch_{i}",
                     n_qubits=(
-                    model_service.model.n_qubits
-                    if model_service.model
-                    else DEMO_QUBITS
-                ),
+                        model_service.model.n_qubits
+                        if model_service.model
+                        else DEMO_QUBITS
+                    ),
                 )
     except SQLAlchemyError:
         logger.warning("Failed to store batch predictions in database", exc_info=True)
@@ -417,6 +416,31 @@ async def list_benchmarks_endpoint(
             total=total,
             offset=offset,
             limit=limit,
+        )
+
+
+@get("/benchmarks/noise-sensitivity")
+async def noise_sensitivity_endpoint(
+    training_run_id: int | None = None,
+    metric_name: str = "noise_eval_val_acc",
+) -> NoiseSensitivityResponse:
+    """Accuracy-vs-noise points produced by `scripts/noise_sensitivity_eval.py`.
+
+    Each point carries `training_run_id`, `depolarising_p`, `readout_p`,
+    and `metric_value` so the frontend can plot one curve per run.
+    """
+    from medqcnn.db.connection import db_session
+    from medqcnn.db.crud import list_noise_sensitivity
+
+    with db_session() as session:
+        rows = list_noise_sensitivity(
+            session,
+            training_run_id=training_run_id,
+            metric_name=metric_name,
+        )
+        return NoiseSensitivityResponse(
+            metric_name=metric_name,
+            points=[r.to_dict() for r in rows],
         )
 
 

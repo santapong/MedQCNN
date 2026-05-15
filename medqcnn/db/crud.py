@@ -154,12 +154,21 @@ def create_benchmark(
     training_run_id: int,
     metric_name: str,
     metric_value: float,
+    depolarising_p: float | None = None,
+    readout_p: float | None = None,
 ) -> Benchmark:
-    """Insert a benchmark metric."""
+    """Insert a benchmark metric.
+
+    `depolarising_p` and `readout_p` annotate the noise level at which
+    `metric_value` was measured. They are nullable so all pre-noise
+    benchmarks (param counts, latency) keep working.
+    """
     row = Benchmark(
         training_run_id=training_run_id,
         metric_name=metric_name,
         metric_value=metric_value,
+        depolarising_p=depolarising_p,
+        readout_p=readout_p,
     )
     session.add(row)
     session.commit()
@@ -181,6 +190,26 @@ def list_benchmarks(
     total = q.count()
     rows = q.order_by(Benchmark.created_at.desc()).offset(offset).limit(limit).all()
     return rows, total
+
+
+def list_noise_sensitivity(
+    session: Session,
+    *,
+    training_run_id: int | None = None,
+    metric_name: str = "noise_eval_val_acc",
+) -> list[Benchmark]:
+    """Return all noise-sensitivity benchmarks for plotting.
+
+    A noise-sensitivity benchmark is one whose `depolarising_p` is
+    non-null. Optionally filter by a single training run and / or a
+    single metric name (e.g. accuracy vs. AUROC sweeps).
+    """
+    q = session.query(Benchmark).filter(Benchmark.depolarising_p.isnot(None))
+    if training_run_id is not None:
+        q = q.filter(Benchmark.training_run_id == training_run_id)
+    if metric_name is not None:
+        q = q.filter(Benchmark.metric_name == metric_name)
+    return q.order_by(Benchmark.training_run_id, Benchmark.depolarising_p).all()
 
 
 # ── API Keys ────────────────────────────────────────────
