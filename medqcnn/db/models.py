@@ -143,6 +143,8 @@ class Benchmark(Base):
     )
     metric_name: Mapped[str] = mapped_column(String(64), nullable=False)
     metric_value: Mapped[float] = mapped_column(Float, nullable=False)
+    depolarising_p: Mapped[float | None] = mapped_column(Float, nullable=True)
+    readout_p: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -157,6 +159,8 @@ class Benchmark(Base):
             "training_run_id": self.training_run_id,
             "metric_name": self.metric_name,
             "metric_value": self.metric_value,
+            "depolarising_p": self.depolarising_p,
+            "readout_p": self.readout_p,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 

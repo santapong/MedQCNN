@@ -121,6 +121,17 @@ class BenchmarkListResponse(Struct):
     limit: int
 
 
+class NoiseSensitivityResponse(Struct):
+    """Accuracy-vs-noise points for plotting a sensitivity curve.
+
+    `points` is grouped by training_run_id so the frontend can draw
+    one line per run.
+    """
+
+    metric_name: str
+    points: list[dict]
+
+
 # ── Authentication ──────────────────────────────────────
 
 
