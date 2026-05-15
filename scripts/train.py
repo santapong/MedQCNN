@@ -118,6 +118,17 @@ def parse_args() -> argparse.Namespace:
             f"(default: none). Choices: {sorted(NOISE_PRESETS)}."
         ),
     )
+    parser.add_argument(
+        "--eval-noise",
+        type=str,
+        default=None,
+        choices=sorted(NOISE_PRESETS),
+        help=(
+            "Optional noise preset used only at evaluation. Combined "
+            "with --noise this enables the noise-as-regulariser pattern "
+            "(train noisy, eval clean). Default: same as --noise."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -134,12 +145,21 @@ def main() -> None:
     console.print(f"  Ansatz layers: {args.n_layers}")
     console.print(f"  Latent dim:    {2**args.n_qubits}")
     console.print(f"  Noise preset:  {args.noise}")
+    console.print(f"  Eval noise:    {args.eval_noise or args.noise}")
 
     noise_config = get_preset(args.noise)
+    eval_noise_config = (
+        get_preset(args.eval_noise) if args.eval_noise is not None else noise_config
+    )
     if not noise_config.is_noiseless:
         console.print(
-            f"  Noise rates:   depolarising={noise_config.depolarising_p}, "
+            f"  Train noise rates: depolarising={noise_config.depolarising_p}, "
             f"readout={noise_config.readout_p}"
+        )
+    if args.eval_noise is not None and eval_noise_config != noise_config:
+        console.print(
+            f"  Eval noise rates:  depolarising={eval_noise_config.depolarising_p}, "
+            f"readout={eval_noise_config.readout_p}"
         )
 
     # Setup
@@ -189,12 +209,18 @@ def main() -> None:
 
     # Model
     console.print("\n[bold yellow]Building HybridQCNN...[/bold yellow]")
+    # Pass eval_noise_config whenever it actually differs from train.
+    # That includes the clean-eval / noisy-train case used for the
+    # noise-as-regulariser experiment.
+    train_noise_arg = noise_config if not noise_config.is_noiseless else None
+    eval_noise_arg = eval_noise_config if eval_noise_config != noise_config else None
     model = HybridQCNN(
         n_qubits=args.n_qubits,
         n_layers=args.n_layers,
         n_classes=n_classes,
         pretrained=True,
-        noise_config=noise_config if not noise_config.is_noiseless else None,
+        noise_config=train_noise_arg,
+        eval_noise_config=eval_noise_arg,
     )
 
     param_counts = model.count_trainable_params()
@@ -245,7 +271,8 @@ def main() -> None:
         n_layers=args.n_layers,
         batch_size=args.batch_size,
         labels=label_names,
-        noise_config=noise_config if not noise_config.is_noiseless else None,
+        noise_config=train_noise_arg,
+        eval_noise_config=eval_noise_arg,
     )
 
     # Resume from checkpoint if specified

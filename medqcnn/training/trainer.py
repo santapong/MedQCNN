@@ -50,9 +50,10 @@ class Trainer:
         n_layers: Number of ansatz layers.
         batch_size: Training batch size.
         labels: Human-readable class names (saved in checkpoints for inference).
-        noise_config: Optional Aer noise spec recorded with the run for
-            reproducibility. The actual noise injection happens when the
-            model's quantum layer is built; the trainer only persists it.
+        noise_config: Optional Aer noise spec used at training time.
+        eval_noise_config: Optional separate noise spec used only at
+            evaluation. Combined with `noise_config`, enables the
+            noise-as-regulariser pattern (train noisy, eval clean).
     """
 
     def __init__(
@@ -69,6 +70,7 @@ class Trainer:
         batch_size: int = 16,
         labels: list[str] | None = None,
         noise_config: NoiseConfig | None = None,
+        eval_noise_config: NoiseConfig | None = None,
     ) -> None:
         self.model = model.to(device)
         self.train_loader = train_loader
@@ -85,6 +87,7 @@ class Trainer:
         self.batch_size = batch_size
         self.labels = labels
         self.noise_config = noise_config
+        self.eval_noise_config = eval_noise_config
 
         self.optimizer = torch.optim.Adam(
             filter(lambda p: p.requires_grad, model.parameters()),
@@ -104,6 +107,10 @@ class Trainer:
             "train_acc": [],
             "val_acc": [],
         }
+
+        # Per-epoch gradient variance across each ansatz layer
+        # (length n_layers per epoch). Empty when no quantum_layer.
+        self.quantum_gradient_variance: list[list[float]] = []
 
     def train_epoch(self) -> tuple[float, float]:
         """Run a single training epoch.
@@ -145,6 +152,20 @@ class Trainer:
 
         avg_loss = total_loss / len(self.train_loader)
         accuracy = correct / total if total > 0 else 0.0
+
+        # Capture gradient variance from the final batch of the epoch.
+        # Grads are still attached because the next epoch's zero_grad()
+        # hasn't run yet. Used as a barren-plateau probe.
+        if hasattr(self.model, "quantum_layer"):
+            from medqcnn.training.metrics import compute_quantum_gradient_variance
+
+            self.quantum_gradient_variance.append(
+                compute_quantum_gradient_variance(
+                    self.model.quantum_layer,
+                    n_layers=self.n_layers,
+                    n_qubits=self.n_qubits,
+                )
+            )
         return avg_loss, accuracy
 
     @torch.no_grad()
@@ -281,6 +302,27 @@ class Trainer:
                     self.history["val_acc"][-1] if self.history["val_acc"] else None
                 )
 
+                # Persist train + eval noise specs alongside the
+                # per-epoch quantum gradient variance (barren-plateau
+                # probe) inside the existing history_json/noise_config
+                # columns so no schema migration is required.
+                noise_payload: dict | None = None
+                if self.noise_config is not None or self.eval_noise_config is not None:
+                    noise_payload = {
+                        "train": self.noise_config.to_dict()
+                        if self.noise_config is not None
+                        else None,
+                        "eval": self.eval_noise_config.to_dict()
+                        if self.eval_noise_config is not None
+                        else None,
+                    }
+
+                history_with_extras = dict(self.history)
+                if self.quantum_gradient_variance:
+                    history_with_extras["quantum_gradient_variance"] = (
+                        self.quantum_gradient_variance
+                    )
+
                 run = create_training_run(
                     session,
                     dataset=self.dataset_name,
@@ -293,10 +335,8 @@ class Trainer:
                     final_val_acc=final_val_acc,
                     duration_seconds=duration_seconds,
                     checkpoint_path=str(self.checkpoint_dir / "model_final.pt"),
-                    history=self.history,
-                    noise_config=self.noise_config.to_dict()
-                    if self.noise_config is not None
-                    else None,
+                    history=history_with_extras,
+                    noise_config=noise_payload,
                 )
 
                 # Store key metrics as benchmarks

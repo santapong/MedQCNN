@@ -82,3 +82,38 @@ def compute_confusion_matrix(
     from sklearn.metrics import confusion_matrix
 
     return confusion_matrix(y_true, y_pred)
+
+
+def compute_quantum_gradient_variance(
+    quantum_layer,
+    n_layers: int,
+    n_qubits: int,
+) -> list[float]:
+    """Per-ansatz-layer gradient variance — a barren-plateau probe.
+
+    For a HEA whose weight tensor has shape (n_layers, n_qubits, 2),
+    returns one variance value per layer index, computed across the
+    `n_qubits * 2` parameters in that layer of the most recent
+    backward pass.
+
+    The variance shrinking exponentially with depth / qubit count is
+    the empirical fingerprint of a barren plateau (McClean 2018).
+
+    Args:
+        quantum_layer: PennyLane TorchLayer whose `weights` Parameter
+            currently carries a populated `.grad` from a backward pass.
+        n_layers: First-dim size of the weight tensor.
+        n_qubits: Second-dim size of the weight tensor.
+
+    Returns:
+        List of `n_layers` floats. NaN per layer when no grad exists.
+    """
+    weights = getattr(quantum_layer, "weights", None)
+    if weights is None or weights.grad is None:
+        return [float("nan")] * n_layers
+
+    grad = weights.grad.detach()
+    if grad.shape[0] != n_layers:
+        return [float("nan")] * n_layers
+
+    return [float(grad[layer].var().cpu().item()) for layer in range(n_layers)]
