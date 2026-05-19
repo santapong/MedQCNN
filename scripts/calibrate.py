@@ -47,8 +47,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--checkpoint", type=str, required=True)
     p.add_argument("--dataset", type=str, default="breastmnist")
     p.add_argument("--batch-size", type=int, default=32)
-    p.add_argument("--alpha", type=float, default=0.1,
-                   help="Conformal miscoverage rate (coverage target 1-alpha).")
+    p.add_argument(
+        "--alpha",
+        type=float,
+        default=0.1,
+        help="Conformal miscoverage rate (coverage target 1-alpha).",
+    )
     p.add_argument("--n-qubits", type=int, default=4)
     p.add_argument("--n-layers", type=int, default=4)
     p.add_argument("--seed", type=int, default=42)
@@ -119,12 +123,17 @@ def main() -> None:
     console.print(f"  ECE (post-calibration): {ece_after:.4f}")
 
     calib_path = ckpt_path.with_suffix(ckpt_path.suffix + ".calibration.json")
-    calib_path.write_text(json.dumps({
-        "temperature": temperature,
-        "ece_before": ece_before,
-        "ece_after": ece_after,
-        "n_calibration": int(logits.shape[0]),
-    }, indent=2))
+    calib_path.write_text(
+        json.dumps(
+            {
+                "temperature": temperature,
+                "ece_before": ece_before,
+                "ece_after": ece_after,
+                "n_calibration": int(logits.shape[0]),
+            },
+            indent=2,
+        )
+    )
     console.print(f"  Wrote {calib_path}")
 
     console.rule("[bold cyan]Fitting conformal predictor[/bold cyan]")
@@ -135,8 +144,9 @@ def main() -> None:
     coverage_rate = coverage / max(1, len(sets))
     avg_size = sum(len(s) for s in sets) / max(1, len(sets))
     console.print(f"  alpha = {args.alpha}, qhat = {qhat:.4f}")
-    console.print(f"  empirical coverage = {coverage_rate:.4f} "
-                  f"(target ≥ {1 - args.alpha:.2f})")
+    console.print(
+        f"  empirical coverage = {coverage_rate:.4f} (target ≥ {1 - args.alpha:.2f})"
+    )
     console.print(f"  avg set size = {avg_size:.3f}")
 
     conf_path = ckpt_path.with_suffix(ckpt_path.suffix + ".conformal.json")

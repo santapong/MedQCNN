@@ -62,8 +62,12 @@ def parse_args() -> argparse.Namespace:
         help="Per-cell checkpoints go into <root>/<noise>/seed_<n>/.",
     )
     p.add_argument("--patience", type=int, default=5)
-    p.add_argument("--save-every", type=int, default=100,
-                   help="Disable periodic checkpoints; only best/final are saved.")
+    p.add_argument(
+        "--save-every",
+        type=int,
+        default=100,
+        help="Disable periodic checkpoints; only best/final are saved.",
+    )
     p.add_argument(
         "--dry-run",
         action="store_true",
@@ -73,7 +77,7 @@ def parse_args() -> argparse.Namespace:
         "--aggregate",
         action="store_true",
         help="After the sweep, print mean ± std and 95%% CI per noise preset "
-             "by reading from the training_runs table.",
+        "by reading from the training_runs table.",
     )
     p.add_argument(
         "--continue-on-error",
@@ -99,17 +103,28 @@ def parse_preset_list(spec: str) -> list[str]:
 
 def cell_command(args, seed: int, preset: str, ckpt_dir: Path) -> list[str]:
     return [
-        sys.executable, str(REPO_ROOT / "scripts" / "train.py"),
-        "--dataset", args.dataset,
-        "--epochs", str(args.epochs),
-        "--batch-size", str(args.batch_size),
-        "--lr", str(args.lr),
-        "--n-qubits", str(args.n_qubits),
-        "--n-layers", str(args.n_layers),
-        "--seed", str(seed),
-        "--noise", preset,
-        "--save-every", str(args.save_every),
-        "--patience", str(args.patience),
+        sys.executable,
+        str(REPO_ROOT / "scripts" / "train.py"),
+        "--dataset",
+        args.dataset,
+        "--epochs",
+        str(args.epochs),
+        "--batch-size",
+        str(args.batch_size),
+        "--lr",
+        str(args.lr),
+        "--n-qubits",
+        str(args.n_qubits),
+        "--n-layers",
+        str(args.n_layers),
+        "--seed",
+        str(seed),
+        "--noise",
+        preset,
+        "--save-every",
+        str(args.save_every),
+        "--patience",
+        str(args.patience),
     ]
 
 
@@ -123,12 +138,13 @@ def aggregate(dataset: str, seeds: list[int], presets: list[str]) -> None:
         rows, total = list_training_runs(session, offset=0, limit=200)
 
     cells: dict[str, list[float]] = {p: [] for p in presets}
-    for row in rows[:expected * 2]:  # tolerate up to one prior sweep
+    for row in rows[: expected * 2]:  # tolerate up to one prior sweep
         if row.dataset != dataset:
             continue
         noise_label = "none"
         if row.noise_config_json:
             import json as _json
+
             try:
                 cfg = _json.loads(row.noise_config_json)
                 train_cfg = cfg.get("train") or {}

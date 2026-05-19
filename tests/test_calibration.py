@@ -64,10 +64,7 @@ class TestTemperatureScaling:
 class TestECE:
     def test_perfect_calibration_has_zero_ece(self):
         # 10 samples at confidence ≈ 1.0, all correct → bin acc = bin conf → ECE = 0.
-        probs = torch.tensor(
-            [[1.0 - 1e-6, 1e-6]] * 10
-            + [[1e-6, 1.0 - 1e-6]] * 10
-        )
+        probs = torch.tensor([[1.0 - 1e-6, 1e-6]] * 10 + [[1e-6, 1.0 - 1e-6]] * 10)
         labels = torch.tensor([0] * 10 + [1] * 10)
         assert compute_ece(probs, labels) < 1e-3
 

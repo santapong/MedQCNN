@@ -158,18 +158,33 @@ def draw_overlay(
     # Prediction label + confidence
     text = f"{label}: {confidence:.1%}"
     cv2.putText(
-        frame, text, (15, 35),
-        cv2.FONT_HERSHEY_SIMPLEX, 1.0, color, 2, cv2.LINE_AA,
+        frame,
+        text,
+        (15, 35),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        1.0,
+        color,
+        2,
+        cv2.LINE_AA,
     )
 
     # FPS counter
     fps_text = f"FPS: {fps:.1f}"
     (tw, _), _ = cv2.getTextSize(
-        fps_text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1,
+        fps_text,
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.6,
+        1,
     )
     cv2.putText(
-        frame, fps_text, (w - tw - 15, 30),
-        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1, cv2.LINE_AA,
+        frame,
+        fps_text,
+        (w - tw - 15, 30),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.6,
+        (200, 200, 200),
+        1,
+        cv2.LINE_AA,
     )
 
     # Class probabilities
@@ -177,8 +192,14 @@ def draw_overlay(
     for i, (lbl, prob) in enumerate(zip(labels, probs)):
         prob_text = f"{lbl}: {prob:.1%}"
         cv2.putText(
-            frame, prob_text, (15, y_offset),
-            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180, 180, 180), 1, cv2.LINE_AA,
+            frame,
+            prob_text,
+            (15, y_offset),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            (180, 180, 180),
+            1,
+            cv2.LINE_AA,
         )
         y_offset += 20
         if i >= 4:
@@ -204,11 +225,13 @@ def run_camera(args: argparse.Namespace) -> None:
     console.print(f"  Labels: {labels}")
 
     # Transform pipeline (matches model_service.py)
-    transform = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.5], std=[0.5]),
-    ])
+    transform = transforms.Compose(
+        [
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5], std=[0.5]),
+        ]
+    )
 
     # Open camera
     console.print(f"\n[bold yellow]Opening camera {args.camera_id}...[/bold yellow]")

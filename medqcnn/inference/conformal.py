@@ -75,9 +75,7 @@ class ConformalPredictor:
         labels_np = _as_numpy(labels).astype(np.int64)
 
         if probs_np.ndim != 2:
-            raise ValueError(
-                f"probs must be 2D (N, C), got shape {probs_np.shape}"
-            )
+            raise ValueError(f"probs must be 2D (N, C), got shape {probs_np.shape}")
         if labels_np.shape[0] != probs_np.shape[0]:
             raise ValueError(
                 "probs and labels must have matching first dim, got "
@@ -110,8 +108,7 @@ class ConformalPredictor:
         """
         if not self.is_fitted:
             raise RuntimeError(
-                "ConformalPredictor.calibrate() must be called before "
-                "predict_set()."
+                "ConformalPredictor.calibrate() must be called before predict_set()."
             )
         probs_np = _as_numpy(probs).astype(np.float64)
         if probs_np.ndim == 1:

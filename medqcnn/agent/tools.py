@@ -211,7 +211,10 @@ def list_medical_datasets() -> str:
                 "description": "Custom image dataset in ImageFolder format",
                 "n_classes": "auto-detected from directory structure",
                 "clinical_use": "User-defined",
-                "usage": "Use --dataset custom --data-dir /path/to/data with the training script",
+                "usage": (
+                    "Use --dataset custom --data-dir /path/to/data with the "
+                    "training script"
+                ),
             },
         },
         indent=2,

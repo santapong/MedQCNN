@@ -49,14 +49,14 @@ class TestGradCAM:
 
 class TestQuantumAttribution:
     def test_jacobian_shape_matches_qubits_x_latent(self, tiny_model: HybridQCNN):
-        latent_dim = 2 ** tiny_model.n_qubits
+        latent_dim = 2**tiny_model.n_qubits
         z = torch.randn(latent_dim)
         z = z / z.norm()
         jac = quantum_attribution(tiny_model, z)
         assert jac.shape == (tiny_model.n_qubits, latent_dim)
 
     def test_accepts_batched_input_of_size_one(self, tiny_model: HybridQCNN):
-        latent_dim = 2 ** tiny_model.n_qubits
+        latent_dim = 2**tiny_model.n_qubits
         z = torch.randn(1, latent_dim)
         z = z / z.norm(dim=-1, keepdim=True)
         jac = quantum_attribution(tiny_model, z)

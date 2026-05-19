@@ -105,7 +105,7 @@ class GradCAM:
                 raise RuntimeError("Forward/backward hooks did not fire.")
 
             activations = self._activations[0]  # (C, h, w)
-            gradients = self._gradients[0]      # (C, h, w)
+            gradients = self._gradients[0]  # (C, h, w)
             weights = gradients.mean(dim=(1, 2))  # (C,)
 
             cam = torch.einsum("c,chw->hw", weights, activations)
