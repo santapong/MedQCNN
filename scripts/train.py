@@ -129,6 +129,19 @@ def parse_args() -> argparse.Namespace:
             "(train noisy, eval clean). Default: same as --noise."
         ),
     )
+    parser.add_argument(
+        "--encoding",
+        type=str,
+        default="amplitude",
+        choices=["amplitude", "reupload"],
+        help=(
+            "Classical→quantum encoding scheme. 'amplitude' uses one-shot "
+            "AmplitudeEmbedding over an L2-normalised R^{2^n} latent. "
+            "'reupload' uses Pérez-Salinas data re-uploading interleaved "
+            "with the HEA layers, with a smaller R^{n_layers*n_qubits} "
+            "latent of rotation angles."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -146,6 +159,7 @@ def main() -> None:
     console.print(f"  Latent dim:    {2**args.n_qubits}")
     console.print(f"  Noise preset:  {args.noise}")
     console.print(f"  Eval noise:    {args.eval_noise or args.noise}")
+    console.print(f"  Encoding:      {args.encoding}")
 
     noise_config = get_preset(args.noise)
     eval_noise_config = (
@@ -221,6 +235,7 @@ def main() -> None:
         pretrained=True,
         noise_config=train_noise_arg,
         eval_noise_config=eval_noise_arg,
+        encoding=args.encoding,
     )
 
     param_counts = model.count_trainable_params()

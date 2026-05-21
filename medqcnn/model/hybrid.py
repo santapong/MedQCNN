@@ -26,7 +26,11 @@ from medqcnn.config.constants import (
     NUM_QUBITS,
 )
 from medqcnn.quantum.noise import NoiseConfig
-from medqcnn.quantum.qnode import create_quantum_layer
+from medqcnn.quantum.qnode import (
+    VALID_ENCODINGS,
+    create_quantum_layer,
+    latent_dim_for_encoding,
+)
 
 
 class HybridQCNN(nn.Module):
@@ -70,14 +74,21 @@ class HybridQCNN(nn.Module):
         pretrained: bool = True,
         noise_config: NoiseConfig | None = None,
         eval_noise_config: NoiseConfig | None = None,
+        encoding: str = "amplitude",
     ) -> None:
         super().__init__()
 
+        if encoding not in VALID_ENCODINGS:
+            raise ValueError(
+                f"encoding must be one of {VALID_ENCODINGS}; got {encoding!r}"
+            )
+
         self.n_qubits = n_qubits
         self.n_layers = n_layers
+        self.encoding = encoding
         self.noise_config = noise_config
         self.eval_noise_config = eval_noise_config
-        latent_dim = 2**n_qubits
+        latent_dim = latent_dim_for_encoding(encoding, n_qubits, n_layers)
 
         # --- Classical components (Node A) ---
         self.backbone = ClassicalBackbone(
@@ -85,9 +96,12 @@ class HybridQCNN(nn.Module):
             pretrained=pretrained,
             freeze=True,
         )
+        # Amplitude encoding needs ||z||=1; data re-uploading uses raw
+        # rotation angles, so the projector skips the L2 step.
         self.projector = LatentProjector(
             input_dim=self.backbone.feature_dim,
             latent_dim=latent_dim,
+            normalize=(encoding == "amplitude"),
         )
 
         # --- Quantum circuit (Node B) ---
@@ -97,6 +111,7 @@ class HybridQCNN(nn.Module):
             n_qubits=n_qubits,
             n_layers=n_layers,
             noise_config=noise_config,
+            encoding=encoding,
         )
 
         # Optional second layer used only at eval time. Its parameters
@@ -108,6 +123,7 @@ class HybridQCNN(nn.Module):
                 n_qubits=n_qubits,
                 n_layers=n_layers,
                 noise_config=eval_noise_config,
+                encoding=encoding,
             )
             for p in self._eval_quantum_layer.parameters():
                 p.requires_grad = False

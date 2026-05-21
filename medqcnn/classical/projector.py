@@ -39,17 +39,36 @@ class LatentProjector(nn.Module):
         input_dim: int,
         latent_dim: int = LATENT_DIM,
         dropout: float = 0.3,
+        normalize: bool = True,
     ) -> None:
         super().__init__()
+        self.normalize = normalize
 
-        self.projection = nn.Sequential(
-            nn.Linear(input_dim, 512),
-            nn.BatchNorm1d(512),
-            nn.ReLU(inplace=True),
-            nn.Dropout(p=dropout),
-            nn.Linear(512, latent_dim),
-            nn.BatchNorm1d(latent_dim),
-        )
+        # When the downstream encoding is data re-uploading the output
+        # is interpreted as rotation angles, not amplitudes; in that
+        # mode we squash through Tanh to keep angles in (-π, π) instead
+        # of running BatchNorm + L2.
+        if normalize:
+            self.projection = nn.Sequential(
+                nn.Linear(input_dim, 512),
+                nn.BatchNorm1d(512),
+                nn.ReLU(inplace=True),
+                nn.Dropout(p=dropout),
+                nn.Linear(512, latent_dim),
+                nn.BatchNorm1d(latent_dim),
+            )
+        else:
+            import math
+
+            self.projection = nn.Sequential(
+                nn.Linear(input_dim, 512),
+                nn.BatchNorm1d(512),
+                nn.ReLU(inplace=True),
+                nn.Dropout(p=dropout),
+                nn.Linear(512, latent_dim),
+                nn.Tanh(),
+            )
+            self._angle_scale = math.pi  # tanh ∈ (-1, 1) → (-π, π)
 
         # Kaiming initialization for ReLU layers
         self._init_weights()
@@ -63,15 +82,20 @@ class LatentProjector(nn.Module):
                     nn.init.zeros_(module.bias)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Project features to the latent space and L2-normalize.
+        """Project features to the latent space.
+
+        When ``normalize=True`` (default), the output is L2-normalised so
+        it serves as a valid amplitude vector. When ``normalize=False``,
+        the output is squashed through Tanh and scaled to ``(-π, π)`` so
+        it serves as rotation-angle inputs for data re-uploading.
 
         Args:
             x: Feature tensor of shape (B, input_dim).
 
         Returns:
-            L2-normalized tensor of shape (B, latent_dim).
-            Each row satisfies ||z||₂ = 1.
+            Tensor of shape (B, latent_dim).
         """
         z = self.projection(x)
-        z = functional.normalize(z, p=2, dim=-1)  # ||z||₂ = 1
-        return z
+        if self.normalize:
+            return functional.normalize(z, p=2, dim=-1)  # ||z||₂ = 1
+        return z * self._angle_scale

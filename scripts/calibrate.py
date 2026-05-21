@@ -32,6 +32,7 @@ import torch
 
 from medqcnn.data.loader import get_medmnist_loaders
 from medqcnn.inference.conformal import ConformalPredictor
+from medqcnn.inference.ood import OODDetector
 from medqcnn.model.hybrid import HybridQCNN
 from medqcnn.training.calibration import (
     apply_temperature,
@@ -56,15 +57,32 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--n-qubits", type=int, default=4)
     p.add_argument("--n-layers", type=int, default=4)
     p.add_argument("--seed", type=int, default=42)
+    p.add_argument(
+        "--skip-ood",
+        action="store_true",
+        help="Skip fitting the Gaussian OOD detector on backbone features.",
+    )
+    p.add_argument(
+        "--ood-percentile",
+        type=float,
+        default=95.0,
+        help="In-distribution percentile used to set the OOD NLL threshold.",
+    )
     return p.parse_args()
 
 
 def collect_logits(
     model: torch.nn.Module, loader, device
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor | None]:
+    """Return (logits, labels, backbone_features).
+
+    backbone_features is None when the model has no ``backbone`` attribute.
+    """
     model.eval()
     logits_chunks: list[torch.Tensor] = []
     label_chunks: list[torch.Tensor] = []
+    feature_chunks: list[torch.Tensor] = []
+    has_backbone = hasattr(model, "backbone")
     with torch.no_grad():
         for images, labels in loader:
             images = images.to(device).float()
@@ -76,7 +94,10 @@ def collect_logits(
             logits = model(images)
             logits_chunks.append(logits.cpu())
             label_chunks.append(labels.cpu())
-    return torch.cat(logits_chunks), torch.cat(label_chunks)
+            if has_backbone:
+                feature_chunks.append(model.backbone(images).cpu())
+    features = torch.cat(feature_chunks) if feature_chunks else None
+    return torch.cat(logits_chunks), torch.cat(label_chunks), features
 
 
 def main() -> None:
@@ -102,14 +123,19 @@ def main() -> None:
     ).to(device)
     model.load_state_dict(checkpoint["model_state_dict"])
 
-    console.rule("[bold cyan]Collecting validation logits[/bold cyan]")
-    _, val_loader, _ = get_medmnist_loaders(
+    console.rule("[bold cyan]Collecting train + validation logits[/bold cyan]")
+    train_loader, val_loader, _ = get_medmnist_loaders(
         dataset_name=args.dataset,
         batch_size=args.batch_size,
         download=True,
     )
-    logits, val_labels = collect_logits(model, val_loader, device)
+    logits, val_labels, val_features = collect_logits(model, val_loader, device)
     console.print(f"  Collected {logits.shape[0]} validation samples")
+    train_features: torch.Tensor | None = None
+    if not args.skip_ood:
+        _, _, train_features = collect_logits(model, train_loader, device)
+        if train_features is not None:
+            console.print(f"  Collected {train_features.shape[0]} train features")
 
     probs_before = torch.softmax(logits, dim=1)
     ece_before = compute_ece(probs_before, val_labels)
@@ -152,6 +178,22 @@ def main() -> None:
     conf_path = ckpt_path.with_suffix(ckpt_path.suffix + ".conformal.json")
     conformal.save(conf_path)
     console.print(f"  Wrote {conf_path}")
+
+    if not args.skip_ood and train_features is not None and val_features is not None:
+        console.rule("[bold cyan]Fitting OOD Gaussian on backbone features[/bold cyan]")
+        ood = OODDetector()
+        ood.fit(train_features)
+        threshold = ood.calibrate_threshold(
+            val_features, percentile=args.ood_percentile
+        )
+        console.print(
+            f"  Threshold (P{args.ood_percentile:.0f} of in-dist val NLL): "
+            f"{threshold:.4f}"
+        )
+        console.print(f"  Feature dim = {ood.feature_dim}, n_train = {ood.n_train}")
+        ood_path = ckpt_path.with_suffix(ckpt_path.suffix + ".ood.json")
+        ood.save(ood_path)
+        console.print(f"  Wrote {ood_path}")
 
 
 if __name__ == "__main__":
