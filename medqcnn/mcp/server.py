@@ -215,11 +215,16 @@ def list_datasets() -> str:
             "image_size": "28x28",
         },
         "custom": {
-            "description": "Custom image dataset in ImageFolder format (train/val/test with class subdirectories)",
+            "description": (
+                "Custom image dataset in ImageFolder format "
+                "(train/val/test with class subdirectories)"
+            ),
             "n_classes": "auto-detected from directory structure",
             "task": "classification",
             "image_size": "user-defined",
-            "usage": "Use --dataset custom --data-dir /path/to/data with the training script",
+            "usage": (
+                "Use --dataset custom --data-dir /path/to/data with the training script"
+            ),
         },
     }
     return json.dumps(datasets, indent=2)

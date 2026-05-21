@@ -34,13 +34,29 @@ class PredictionRequest(Struct):
 
 
 class PredictionResponse(Struct):
-    """Inference response with diagnosis."""
+    """Inference response with diagnosis.
+
+    ``calibrated_confidence`` is the post-temperature-scaling top-1
+    probability (Guo et al., 2017) when a calibration sidecar is
+    available on the active checkpoint; ``None`` otherwise.
+
+    ``prediction_set`` and ``abstained`` come from the split-conformal
+    APS predictor (Romano et al., 2020). A non-singleton set is the
+    model's "decline to commit" signal — the API surface flags
+    ``abstained=true`` so a clinician-in-the-loop UI can route the
+    case for human review. Both fields are ``None`` when no conformal
+    sidecar is loaded.
+    """
 
     prediction: int
     label: str
     confidence: float
     probabilities: list[float] | None = None
     quantum_expectation_values: list[float] | None = None
+    calibrated_confidence: float | None = None
+    prediction_set: list[int] | None = None
+    prediction_set_labels: list[str] | None = None
+    abstained: bool | None = None
 
 
 class DatasetInfo(Struct):
