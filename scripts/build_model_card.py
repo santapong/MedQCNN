@@ -133,7 +133,7 @@ def render_card(args, ckpt_path: Path) -> str:
     add("")
     add("## 1. Model details")
     add("")
-    add(f"- **Architecture**: Hybrid quantum-classical CNN (`HybridQCNN`).")
+    add("- **Architecture**: Hybrid quantum-classical CNN (`HybridQCNN`).")
     add(
         f"- **Classical backbone**: `{BACKBONE_NAME}` (ImageNet-pretrained, "
         "frozen during MedQCNN training)."
@@ -180,15 +180,9 @@ def render_card(args, ckpt_path: Path) -> str:
     add("## 4. Evaluation")
     add("")
     if run:
-        add(
-            f"- **Final train accuracy**: {run.get('final_train_acc', 'n/a')}"
-        )
-        add(
-            f"- **Final validation accuracy**: {run.get('final_val_acc', 'n/a')}"
-        )
-        add(
-            f"- **Wall-clock duration**: {run.get('duration_seconds', 'n/a')}s"
-        )
+        add(f"- **Final train accuracy**: {run.get('final_train_acc', 'n/a')}")
+        add(f"- **Final validation accuracy**: {run.get('final_val_acc', 'n/a')}")
+        add(f"- **Wall-clock duration**: {run.get('duration_seconds', 'n/a')}s")
     else:
         add("- *(No matching training-run row in DB; numbers omitted.)*")
     add("")
@@ -196,8 +190,10 @@ def render_card(args, ckpt_path: Path) -> str:
         add("### Calibration")
         add("")
         add(f"- Temperature scaling: `T = {calib.get('temperature', 'n/a'):.4f}`")
-        add(f"- ECE before / after: `{calib.get('ece_before', 'n/a'):.4f}` / "
-            f"`{calib.get('ece_after', 'n/a'):.4f}`")
+        add(
+            f"- ECE before / after: `{calib.get('ece_before', 'n/a'):.4f}` / "
+            f"`{calib.get('ece_after', 'n/a'):.4f}`"
+        )
         add(f"- Calibration split size: `n = {calib.get('n_calibration', 'n/a')}`")
         add("")
     if conf:
@@ -206,8 +202,10 @@ def render_card(args, ckpt_path: Path) -> str:
         add(f"- Coverage target: `1 - α = {1 - conf.get('alpha', 0.1):.2f}`")
         add(f"- Calibrated quantile `q̂`: `{conf.get('qhat', 'n/a')}`")
         add(f"- Calibration split size: `n = {conf.get('n_calibration', 'n/a')}`")
-        add("- Non-singleton prediction sets surface as `abstained=true` "
-            "in the `/predict` response.")
+        add(
+            "- Non-singleton prediction sets surface as `abstained=true` "
+            "in the `/predict` response."
+        )
         add("")
     if ood:
         add("### Out-of-distribution gate")
@@ -247,10 +245,7 @@ def render_card(args, ckpt_path: Path) -> str:
         "- Run `scripts/multi_seed_sweep.py --aggregate` to publish CIs "
         "across at least 5 seeds before any external evaluation claim."
     )
-    add(
-        "- Treat any prediction with `abstained=true` as requiring "
-        "human review."
-    )
+    add("- Treat any prediction with `abstained=true` as requiring human review.")
     add(
         "- Treat any prediction whose backbone features score above the OOD "
         "threshold as out-of-distribution and refuse to act."
@@ -260,7 +255,7 @@ def render_card(args, ckpt_path: Path) -> str:
     add("## 7. Provenance")
     add("")
     add(f"- Checkpoint path: `{ckpt_path}`")
-    add(f"- Card generator: `scripts/build_model_card.py`")
+    add("- Card generator: `scripts/build_model_card.py`")
     add(
         "- Backed by the GMLP guiding principles "
         "(FDA / Health Canada / MHRA, Jan 2025)."

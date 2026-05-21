@@ -25,8 +25,13 @@ from pennylane import numpy as pnp
 
 from medqcnn.config.constants import NUM_ANSATZ_LAYERS, NUM_QUBITS, NUM_SHOTS_NOISY
 from medqcnn.quantum.ansatz import get_param_shape, hardware_efficient_ansatz
-from medqcnn.quantum.encoding import amplitude_encode
+from medqcnn.quantum.encoding import (
+    amplitude_encode,
+    data_reupload_latent_dim,
+)
 from medqcnn.quantum.noise import NoiseConfig, build_noise_model
+
+VALID_ENCODINGS = ("amplitude", "reupload")
 
 
 def _build_device(
@@ -110,6 +115,7 @@ def create_torch_qnode(
     device_name: str = "default.qubit",
     noise_config: NoiseConfig | None = None,
     shots: int | None = None,
+    encoding: str = "amplitude",
 ) -> tuple[qml.QNode, dict[str, tuple[int, ...]]]:
     """Create a QNode compatible with PennyLane's TorchLayer.
 
@@ -124,20 +130,59 @@ def create_torch_qnode(
         device_name: PennyLane device backend (ignored when noisy).
         noise_config: Optional Aer noise model.
         shots: Measurement shots when noisy.
+        encoding: One of ``"amplitude"`` (default) or ``"reupload"``.
+            See :mod:`medqcnn.quantum.encoding`.
 
     Returns:
         Tuple of (qnode, weight_shapes) where weight_shapes maps
         parameter names to their shapes for TorchLayer initialization.
     """
+    if encoding not in VALID_ENCODINGS:
+        raise ValueError(f"encoding must be one of {VALID_ENCODINGS}; got {encoding!r}")
+
     dev, diff_override = _build_device(n_qubits, noise_config, device_name, shots)
     effective_diff = diff_override or "backprop"
     wires = range(n_qubits)
 
-    @qml.qnode(dev, interface="torch", diff_method=effective_diff)
-    def circuit(inputs, weights):
-        amplitude_encode(inputs, wires=wires)
-        hardware_efficient_ansatz(weights, wires=wires, n_layers=n_layers)
-        return [qml.expval(qml.PauliZ(w)) for w in wires]
+    if encoding == "amplitude":
+
+        @qml.qnode(dev, interface="torch", diff_method=effective_diff)
+        def circuit(inputs, weights):
+            amplitude_encode(inputs, wires=wires)
+            hardware_efficient_ansatz(weights, wires=wires, n_layers=n_layers)
+            return [qml.expval(qml.PauliZ(w)) for w in wires]
+    else:
+
+        @qml.qnode(dev, interface="torch", diff_method=effective_diff)
+        def circuit(inputs, weights):
+            # `inputs` is either (n_layers*n_qubits,) for a single
+            # sample or (B, n_layers*n_qubits) for a batch. PennyLane's
+            # default.qubit broadcasts single-qubit rotations natively
+            # over the leading batch dim, so we just reshape and let
+            # the device do the heavy lifting.
+            if inputs.ndim == 1:
+                data = inputs.reshape(n_layers, n_qubits)
+                for layer in range(n_layers):
+                    for q in range(n_qubits):
+                        qml.RY(data[layer, q], wires=wires[q])
+                    for q in range(n_qubits):
+                        qml.RY(weights[layer, q, 0], wires=wires[q])
+                        qml.RZ(weights[layer, q, 1], wires=wires[q])
+                    for q in range(n_qubits - 1):
+                        qml.CZ(wires=[wires[q], wires[q + 1]])
+                    qml.CZ(wires=[wires[n_qubits - 1], wires[0]])
+            else:
+                data = inputs.reshape(-1, n_layers, n_qubits)
+                for layer in range(n_layers):
+                    for q in range(n_qubits):
+                        qml.RY(data[:, layer, q], wires=wires[q])
+                    for q in range(n_qubits):
+                        qml.RY(weights[layer, q, 0], wires=wires[q])
+                        qml.RZ(weights[layer, q, 1], wires=wires[q])
+                    for q in range(n_qubits - 1):
+                        qml.CZ(wires=[wires[q], wires[q + 1]])
+                    qml.CZ(wires=[wires[n_qubits - 1], wires[0]])
+            return [qml.expval(qml.PauliZ(w)) for w in wires]
 
     weight_shapes = {"weights": get_param_shape(n_layers, n_qubits)}
 
@@ -150,6 +195,7 @@ def create_quantum_layer(
     device_name: str = "default.qubit",
     noise_config: NoiseConfig | None = None,
     shots: int | None = None,
+    encoding: str = "amplitude",
 ):
     """Create a PennyLane TorchLayer wrapping the quantum circuit.
 
@@ -159,6 +205,7 @@ def create_quantum_layer(
         device_name: PennyLane device backend (ignored when noisy).
         noise_config: Optional Aer noise model. See `create_torch_qnode`.
         shots: Measurement shots when noisy.
+        encoding: ``"amplitude"`` or ``"reupload"``.
 
     Returns:
         A `qml.qnn.TorchLayer` instance (subclass of nn.Module).
@@ -169,6 +216,16 @@ def create_quantum_layer(
         device_name=device_name,
         noise_config=noise_config,
         shots=shots,
+        encoding=encoding,
     )
 
     return qml.qnn.TorchLayer(qnode, weight_shapes)
+
+
+def latent_dim_for_encoding(encoding: str, n_qubits: int, n_layers: int) -> int:
+    """Return the latent-vector length the projector must emit."""
+    if encoding == "amplitude":
+        return 2**n_qubits
+    if encoding == "reupload":
+        return data_reupload_latent_dim(n_layers, n_qubits)
+    raise ValueError(f"Unknown encoding {encoding!r}")

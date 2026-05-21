@@ -124,9 +124,7 @@ class ModelService:
                     ood_path.name,
                 )
             except (ValueError, KeyError, OSError):
-                logger.warning(
-                    "Failed to load OOD sidecar %s", ood_path, exc_info=True
-                )
+                logger.warning("Failed to load OOD sidecar %s", ood_path, exc_info=True)
                 self.ood = None
         else:
             self.ood = None

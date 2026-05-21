@@ -183,7 +183,9 @@ def main() -> None:
         console.rule("[bold cyan]Fitting OOD Gaussian on backbone features[/bold cyan]")
         ood = OODDetector()
         ood.fit(train_features)
-        threshold = ood.calibrate_threshold(val_features, percentile=args.ood_percentile)
+        threshold = ood.calibrate_threshold(
+            val_features, percentile=args.ood_percentile
+        )
         console.print(
             f"  Threshold (P{args.ood_percentile:.0f} of in-dist val NLL): "
             f"{threshold:.4f}"

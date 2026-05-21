@@ -79,9 +79,7 @@ class OODDetector:
         """Fit the Gaussian on a stack of in-distribution features."""
         feats = _as_numpy(features).astype(np.float64)
         if feats.ndim != 2:
-            raise ValueError(
-                f"features must be 2D (N, d); got shape {feats.shape}"
-            )
+            raise ValueError(f"features must be 2D (N, d); got shape {feats.shape}")
 
         n, d = feats.shape
         mu = feats.mean(axis=0)
@@ -170,9 +168,7 @@ class OODDetector:
     ) -> list[bool]:
         """Per-sample OOD verdict using the calibrated threshold."""
         if self.threshold is None:
-            raise RuntimeError(
-                "Call calibrate_threshold() before is_ood()."
-            )
+            raise RuntimeError("Call calibrate_threshold() before is_ood().")
         scores = self.score(features)
         return [bool(s > self.threshold) for s in scores]
 
@@ -200,9 +196,7 @@ class OODDetector:
             feature_dim=int(d.get("feature_dim", 0)),
             mean=np.asarray(d["mean"], dtype=np.float64) if "mean" in d else None,
             cov_chol=(
-                np.asarray(d["cov_chol"], dtype=np.float64)
-                if "cov_chol" in d
-                else None
+                np.asarray(d["cov_chol"], dtype=np.float64) if "cov_chol" in d else None
             ),
             log_det=None if d.get("log_det") is None else float(d["log_det"]),
             regularization=float(d.get("regularization", 1e-3)),
