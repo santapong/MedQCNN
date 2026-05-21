@@ -57,6 +57,8 @@ class PredictionResponse(Struct):
     prediction_set: list[int] | None = None
     prediction_set_labels: list[str] | None = None
     abstained: bool | None = None
+    ood_score: float | None = None
+    is_ood: bool | None = None
 
 
 class DatasetInfo(Struct):

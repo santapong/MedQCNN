@@ -15,6 +15,7 @@ from litestar.exceptions import ClientException
 from medqcnn.api.schemas import PredictionResponse
 from medqcnn.config.constants import DEMO_QUBITS, NUM_ANSATZ_LAYERS
 from medqcnn.inference.conformal import ConformalPredictor
+from medqcnn.inference.ood import OODDetector
 from medqcnn.model.hybrid import HybridQCNN
 from medqcnn.training.calibration import apply_temperature
 from medqcnn.utils.device import get_device, set_seed
@@ -46,6 +47,7 @@ class ModelService:
         self.labels: list[str] = ["Benign", "Malignant"]
         self.temperature: float | None = None
         self.conformal: ConformalPredictor | None = None
+        self.ood: OODDetector | None = None
 
     def load(
         self,
@@ -84,6 +86,7 @@ class ModelService:
         else:
             self.temperature = None
             self.conformal = None
+            self.ood = None
 
         self.model.eval()
 
@@ -109,6 +112,24 @@ class ModelService:
                 self.temperature = None
         else:
             self.temperature = None
+
+        ood_path = checkpoint_path.with_suffix(suffix + ".ood.json")
+        if ood_path.exists():
+            try:
+                self.ood = OODDetector.load(ood_path)
+                logger.info(
+                    "Loaded OOD detector (method=%s, threshold=%.4f) from %s",
+                    self.ood.method,
+                    self.ood.threshold or float("nan"),
+                    ood_path.name,
+                )
+            except (ValueError, KeyError, OSError):
+                logger.warning(
+                    "Failed to load OOD sidecar %s", ood_path, exc_info=True
+                )
+                self.ood = None
+        else:
+            self.ood = None
 
         conf_path = checkpoint_path.with_suffix(suffix + ".conformal.json")
         if conf_path.exists():
@@ -215,12 +236,25 @@ class ModelService:
                 )
 
         q_values = None
+        backbone_features: torch.Tensor | None = None
         if hasattr(self.model, "quantum_layer"):
             with torch.no_grad():
-                features = self.model.backbone(tensor)
-                z = self.model.projector(features)
+                backbone_features = self.model.backbone(tensor)
+                z = self.model.projector(backbone_features)
                 q_out = self.model.quantum_layer(z)
                 q_values = q_out[0].cpu().tolist()
+
+        ood_score: float | None = None
+        is_ood: bool | None = None
+        if (
+            self.ood is not None
+            and self.ood.is_fitted
+            and backbone_features is not None
+        ):
+            feat_np = backbone_features.cpu().numpy()
+            ood_score = float(self.ood.score(feat_np)[0])
+            if self.ood.threshold is not None:
+                is_ood = bool(ood_score > self.ood.threshold)
 
         prediction_set: list[int] | None = None
         prediction_set_labels: list[str] | None = None
@@ -234,6 +268,11 @@ class ModelService:
             ]
             abstained = len(prediction_set) != 1
 
+        # OR the OOD verdict into `abstained` so a single field
+        # represents "model declines to commit".
+        if is_ood is True:
+            abstained = True
+
         return PredictionResponse(
             prediction=pred,
             label=self.labels[pred] if pred < len(self.labels) else str(pred),
@@ -244,6 +283,8 @@ class ModelService:
             prediction_set=prediction_set,
             prediction_set_labels=prediction_set_labels,
             abstained=abstained,
+            ood_score=None if ood_score is None else round(ood_score, 6),
+            is_ood=is_ood,
         )
 
 

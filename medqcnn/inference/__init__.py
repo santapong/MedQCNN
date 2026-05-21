@@ -8,5 +8,6 @@ or re-fit a conformal predictor without touching the checkpoint.
 """
 
 from medqcnn.inference.conformal import ConformalPredictor
+from medqcnn.inference.ood import OODDetector
 
-__all__ = ["ConformalPredictor"]
+__all__ = ["ConformalPredictor", "OODDetector"]
